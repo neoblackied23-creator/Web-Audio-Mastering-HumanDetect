@@ -20,9 +20,10 @@ export async function runAutoOptimize(source, renderCandidate, onProgress=()=>{}
     const mastered=await renderCandidate(prepared,{aiFix:true,cacheResult:false});
     if(!mastered) continue;
     const report=analyzeAudioBuffer(mastered);
-    results.push({name:v.name,buffer:mastered,report});
-    onProgress({index:i+1,total:variants.length,name:v.name,stage:'analyzed',score:report.humanPct});
+    const score=report.humanScore??report.humanPct;
+    results.push({name:v.name,buffer:mastered,report,score});
+    onProgress({index:i+1,total:variants.length,name:v.name,stage:'analyzed',score});
   }
-  results.sort((a,b)=>b.report.humanPct-a.report.humanPct || a.report.aiPct-b.report.aiPct);
+  results.sort((a,b)=>(b.score-a.score) || ((a.report.aiScore??a.report.aiPct)-(b.report.aiScore??b.report.aiPct)));
   return {best:results[0]||null,results};
 }

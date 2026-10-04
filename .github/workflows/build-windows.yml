@@ -37,6 +37,7 @@ jobs:
           Copy-Item overlay/patch/humanize-boost.js app/web/human-detect/humanize-boost.js
           Copy-Item overlay/patch/virtual-performance.js app/web/human-detect/virtual-performance.js
           Copy-Item overlay/patch/auto-optimize.js app/web/human-detect/auto-optimize.js
+          Copy-Item overlay/patch/stem-engine.js app/web/human-detect/stem-engine.js
           Copy-Item overlay/patch/apply_patch.py app/apply_patch.py
 
       - name: Apply integration patch
@@ -67,6 +68,6 @@ jobs:
       - name: Upload portable EXE
         uses: actions/upload-artifact@v4
         with:
-          name: Web-Audio-Mastering-HumanDetect-1.7.0-Windows
+          name: Web-Audio-Mastering-HumanDetect-1.8.0-Windows
           path: app/release/*.exe
           if-no-files-found: error

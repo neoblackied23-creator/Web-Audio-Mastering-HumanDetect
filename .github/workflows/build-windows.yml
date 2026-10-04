@@ -1,0 +1,69 @@
+name: Build HumanDetect Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout HumanDetect overlay
+        uses: actions/checkout@v4
+        with:
+          path: overlay
+
+      - name: Checkout upstream Web Audio Mastering v1.3.4 source
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/eas4ai/Web-Audio-Mastering.git app
+
+      - name: Verify upstream version
+        shell: pwsh
+        run: |
+          $pkg = Get-Content app/package.json | ConvertFrom-Json
+          if ($pkg.version -ne '1.3.4') { throw "Unexpected upstream version: $($pkg.version)" }
+
+      - name: Copy HumanDetect modules
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force app/web/human-detect | Out-Null
+          Copy-Item overlay/patch/human-detector-core.js app/web/human-detect/human-detector-core.js
+          Copy-Item overlay/patch/human-detect-panel.js app/web/human-detect/human-detect-panel.js
+          Copy-Item overlay/patch/apply_patch.py app/apply_patch.py
+
+      - name: Apply integration patch
+        working-directory: app
+        run: python apply_patch.py
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build portable Windows EXE
+        working-directory: app
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show build output
+        shell: pwsh
+        run: Get-ChildItem app/release -Recurse | Select-Object FullName,Length
+
+      - name: Upload portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Web-Audio-Mastering-HumanDetect-1.4.0-Windows
+          path: app/release/*.exe
+          if-no-files-found: error

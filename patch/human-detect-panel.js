@@ -1,74 +1,39 @@
 import { analyzeAudioBuffer, compareReports } from './human-detector-core.js';
+import { applyHumanizeBoost } from './humanize-boost.js';
 
 export function mountHumanDetectPanel(opts={}) {
   const style=document.createElement('style');
-  style.textContent=`.hd-float{position:fixed;right:18px;bottom:18px;width:min(470px,calc(100vw - 36px));z-index:99999;padding:14px;border:1px solid rgba(127,127,127,.3);border-radius:14px;background:rgba(24,24,28,.96);box-shadow:0 18px 50px rgba(0,0,0,.38);color:#f2f2f2;font-family:system-ui,sans-serif}.hd-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.hd-head small{display:block;opacity:.65;margin-top:2px}.hd-badge{font-size:10px;border:1px solid currentColor;border-radius:999px;padding:3px 7px;opacity:.75}.hd-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}.hd-card{background:rgba(255,255,255,.06);padding:10px;border-radius:10px}.hd-card span,.hd-card em{display:block;font-size:10px;opacity:.65;font-style:normal}.hd-card strong{font-size:17px;display:block;margin:3px 0}.hd-actions{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:8px;margin-top:10px}.hd-actions button{border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:10px 8px;background:rgba(255,255,255,.08);color:inherit;cursor:pointer}.hd-actions button:disabled{opacity:.4;cursor:not-allowed}.hd-actions .hd-master{background:#b9a7ef;color:#121217;font-weight:700}.hd-progress-wrap{margin-top:10px;display:none}.hd-progress-row{display:flex;justify-content:space-between;gap:10px;font-size:11px;margin-bottom:5px;opacity:.85}.hd-progress{height:9px;border-radius:999px;background:rgba(255,255,255,.09);overflow:hidden;border:1px solid rgba(255,255,255,.08)}.hd-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#9c87e8,#c5b7f4);transition:width .25s ease}.hd-status{font-size:11px;opacity:.75;margin-top:9px;line-height:1.45}.hd-close{background:none;border:0;color:inherit;cursor:pointer;font-size:18px;opacity:.7}.hd-toggle{position:fixed;right:18px;bottom:18px;z-index:99998;border-radius:999px;padding:10px 14px;border:1px solid rgba(127,127,127,.3);background:#24242a;color:#fff;cursor:pointer}@media(max-width:760px){.hd-grid,.hd-actions{grid-template-columns:1fr}.hd-float{left:12px;right:12px;width:auto;bottom:12px}}`;
+  style.textContent=`.hd-float{position:fixed;right:18px;bottom:18px;width:min(500px,calc(100vw - 36px));z-index:99999;padding:14px;border:1px solid rgba(127,127,127,.3);border-radius:14px;background:rgba(24,24,28,.96);box-shadow:0 18px 50px rgba(0,0,0,.38);color:#f2f2f2;font-family:system-ui,sans-serif}.hd-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.hd-head small{display:block;opacity:.65;margin-top:2px}.hd-badge{font-size:10px;border:1px solid currentColor;border-radius:999px;padding:3px 7px;opacity:.75}.hd-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}.hd-card{background:rgba(255,255,255,.06);padding:10px;border-radius:10px}.hd-card span,.hd-card em{display:block;font-size:10px;opacity:.65;font-style:normal}.hd-card strong{font-size:17px;display:block;margin:3px 0}.hd-humanize{margin-top:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,.05);display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}.hd-humanize label{font-size:12px}.hd-humanize small{grid-column:1/-1;opacity:.65}.hd-humanize select{background:#24242a;color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:6px}.hd-actions{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:8px;margin-top:10px}.hd-actions button{border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:10px 8px;background:rgba(255,255,255,.08);color:inherit;cursor:pointer}.hd-actions button:disabled{opacity:.4;cursor:not-allowed}.hd-actions .hd-master{background:#b9a7ef;color:#121217;font-weight:700}.hd-progress-wrap{margin-top:10px;display:none}.hd-progress-row{display:flex;justify-content:space-between;gap:10px;font-size:11px;margin-bottom:5px;opacity:.85}.hd-progress{height:9px;border-radius:999px;background:rgba(255,255,255,.09);overflow:hidden;border:1px solid rgba(255,255,255,.08)}.hd-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#9c87e8,#c5b7f4);transition:width .25s ease}.hd-status{font-size:11px;opacity:.75;margin-top:9px;line-height:1.45}.hd-close{background:none;border:0;color:inherit;cursor:pointer;font-size:18px;opacity:.7}.hd-toggle{position:fixed;right:18px;bottom:18px;z-index:99998;border-radius:999px;padding:10px 14px;border:1px solid rgba(127,127,127,.3);background:#24242a;color:#fff;cursor:pointer}@media(max-width:760px){.hd-grid,.hd-actions{grid-template-columns:1fr}.hd-float{left:12px;right:12px;width:auto;bottom:12px}.hd-humanize{grid-template-columns:auto 1fr}}`;
   document.head.appendChild(style);
 
   const toggle=document.createElement('button'); toggle.className='hd-toggle'; toggle.textContent='AI / Human Check'; document.body.appendChild(toggle);
   const root=document.createElement('section'); root.className='hd-float'; root.style.display='none';
-  root.innerHTML=`<div class="hd-head"><div><b>AI / Human Character Check</b><small>Analyze → Master → Compare • local processing</small></div><div><span class="hd-badge">BETA</span><button class="hd-close">×</button></div></div><div class="hd-grid"><div class="hd-card"><span>Original</span><strong id="hd-o">—</strong><em id="hd-os">Load a track first</em></div><div class="hd-card"><span>Mastered</span><strong id="hd-m">—</strong><em id="hd-ms">Start mastering first</em></div><div class="hd-card"><span>Human-like change</span><strong id="hd-d">—</strong><em>points</em></div></div><div class="hd-actions"><button id="hd-ao">1. Analyze Original</button><button class="hd-master" id="hd-start">2. Start Mastering</button><button id="hd-am">3. Analyze Mastered</button></div><div class="hd-progress-wrap" id="hd-pw"><div class="hd-progress-row"><span id="hd-stage">Preparing render…</span><b id="hd-pct">0%</b></div><div class="hd-progress"><div class="hd-progress-fill" id="hd-pfill"></div></div></div><div class="hd-status" id="hd-status">Load a song, analyze the original, render the active mastering chain, then analyze the mastered result.</div>`;
+  root.innerHTML=`<div class="hd-head"><div><b>AI / Human Character Check</b><small>Analyze → Humanize → Master → Compare • local processing</small></div><div><span class="hd-badge">v1.5</span><button class="hd-close">×</button></div></div><div class="hd-grid"><div class="hd-card"><span>Original</span><strong id="hd-o">—</strong><em id="hd-os">Load a track first</em></div><div class="hd-card"><span>Mastered</span><strong id="hd-m">—</strong><em id="hd-ms">Start mastering first</em></div><div class="hd-card"><span>Human-like change</span><strong id="hd-d">—</strong><em>points</em></div></div><div class="hd-humanize"><input id="hd-hz" type="checkbox" checked><label for="hd-hz"><b>Humanize Boost</b></label><select id="hd-hzp"><option value="light">Light</option><option value="medium" selected>Medium</option><option value="strong">Strong</option></select><small>Micro dynamics • timing smear • spectral softening • stereo variation • analog/room naturalizer</small></div><div class="hd-actions"><button id="hd-ao">1. Analyze Original</button><button class="hd-master" id="hd-start">2. Start Mastering</button><button id="hd-am">3. Analyze Mastered</button></div><div class="hd-progress-wrap" id="hd-pw"><div class="hd-progress-row"><span id="hd-stage">Preparing render…</span><b id="hd-pct">0%</b></div><div class="hd-progress"><div class="hd-progress-fill" id="hd-pfill"></div></div></div><div class="hd-status" id="hd-status">Load a song, analyze the original, optionally Humanize Boost it, render, then compare.</div>`;
   document.body.appendChild(root);
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';refreshReady();};
   root.querySelector('.hd-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};
 
   let original=null, mastered=null, renderedMaster=null, progressTimer=null;
   const btnO=root.querySelector('#hd-ao'), btnStart=root.querySelector('#hd-start'), btnM=root.querySelector('#hd-am');
+  const hz=root.querySelector('#hd-hz'), hzp=root.querySelector('#hd-hzp');
   const pw=root.querySelector('#hd-pw'), pfill=root.querySelector('#hd-pfill'), ppct=root.querySelector('#hd-pct'), pstage=root.querySelector('#hd-stage');
   const status=t=>root.querySelector('#hd-status').textContent=t;
   const render=()=>{if(original){root.querySelector('#hd-o').textContent=`${original.humanPct}% human-like`;root.querySelector('#hd-os').textContent=`${original.aiPct}% AI-like • DSP ${original.dspPct}% • FP ${original.fakePct}%`;}if(mastered){root.querySelector('#hd-m').textContent=`${mastered.humanPct}% human-like`;root.querySelector('#hd-ms').textContent=`${mastered.aiPct}% AI-like • DSP ${mastered.dspPct}% • FP ${mastered.fakePct}%`;}const c=compareReports(original,mastered);if(c)root.querySelector('#hd-d').textContent=`${c.humanDelta>=0?'+':''}${c.humanDelta}`;};
   const setProgress=(pct,stage)=>{const p=Math.max(0,Math.min(100,Math.round(pct)));pw.style.display='block';pfill.style.width=`${p}%`;ppct.textContent=`${p}%`;if(stage)pstage.textContent=stage;};
   const stopProgressTimer=()=>{if(progressTimer){clearInterval(progressTimer);progressTimer=null;}};
 
-  async function refreshReady(){
-    try{
-      const b=await opts.getOriginalBuffer?.(); const ready=!!b;
-      btnO.disabled=!ready; btnStart.disabled=!ready; btnM.disabled=!ready || !renderedMaster;
-      if(ready){
-        if(!original) root.querySelector('#hd-os').textContent='Ready to analyze';
-        if(!renderedMaster && !mastered) root.querySelector('#hd-ms').textContent='Start mastering first';
-        if(!original) status('Step 1: Analyze Original. Then Start Mastering.');
-      }else{
-        root.querySelector('#hd-os').textContent='Load a track first'; root.querySelector('#hd-ms').textContent='Load a track first';
-        status('No audio loaded yet. Select or drag a song into Web Audio Mastering first.');
-      }
-    }catch{btnO.disabled=true;btnStart.disabled=true;btnM.disabled=true;}
-  }
+  async function refreshReady(){try{const b=await opts.getOriginalBuffer?.();const ready=!!b;btnO.disabled=!ready;btnStart.disabled=!ready;btnM.disabled=!ready||!renderedMaster;if(ready){if(!original)root.querySelector('#hd-os').textContent='Ready to analyze';if(!renderedMaster&&!mastered)root.querySelector('#hd-ms').textContent='Start mastering first';}else{root.querySelector('#hd-os').textContent='Load a track first';root.querySelector('#hd-ms').textContent='Load a track first';status('No audio loaded yet. Select or drag a song into Web Audio Mastering first.');}}catch{btnO.disabled=true;btnStart.disabled=true;btnM.disabled=true;}}
 
-  btnO.onclick=async()=>{
-    const b=await opts.getOriginalBuffer?.(); if(!b){status('No audio loaded. Select a song first.');await refreshReady();return;}
-    try{btnO.disabled=true;status('Analyzing original audio…');original=analyzeAudioBuffer(b);render();status(`Original analyzed: ${original.aiPct}% AI-like / ${original.humanPct}% human-like. Step 2: Start Mastering.`);}catch(e){status('Original analysis failed: '+e.message);}finally{btnO.disabled=false;}
-  };
+  btnO.onclick=async()=>{const b=await opts.getOriginalBuffer?.();if(!b){status('No audio loaded.');return;}try{btnO.disabled=true;status('Analyzing original audio…');original=analyzeAudioBuffer(b);render();status(`Original analyzed: ${original.aiPct}% AI-like / ${original.humanPct}% human-like.`);}catch(e){status('Original analysis failed: '+e.message);}finally{btnO.disabled=false;}};
 
-  btnStart.onclick=async()=>{
-    const source=await opts.getOriginalBuffer?.(); if(!source){status('No audio loaded. Select a song first.');return;}
-    try{
-      btnStart.disabled=true; btnM.disabled=true; renderedMaster=null; mastered=null; root.querySelector('#hd-m').textContent='—'; root.querySelector('#hd-ms').textContent='Rendering current mastering chain…'; root.querySelector('#hd-d').textContent='—';
-      let p=3; setProgress(p,'Preparing mastering chain…');
-      stopProgressTimer();
-      progressTimer=setInterval(()=>{
-        if(p<18){p+=3;setProgress(p,'Preparing mastering chain…');}
-        else if(p<45){p+=2;setProgress(p,'Processing Quick Fix / Stereo / Polish…');}
-        else if(p<72){p+=2;setProgress(p,'Applying Loudness / EQ / limiting…');}
-        else if(p<92){p+=1;setProgress(p,'Finalizing master render…');}
-      },350);
-      status('Mastering/rendering with the current Quick Fix, Stereo, Polish, Loudness and EQ settings…');
-      renderedMaster=await opts.renderMaster?.();
-      stopProgressTimer();
-      if(!renderedMaster) throw new Error('Master render did not return an AudioBuffer');
-      setProgress(100,'Mastering complete ✓');
-      root.querySelector('#hd-ms').textContent='Master ready to analyze'; btnM.disabled=false;
-      status('Mastering complete. Step 3: click Analyze Mastered, then Export WAV when satisfied.');
-    }catch(e){stopProgressTimer();setProgress(0,'Mastering failed');root.querySelector('#hd-ms').textContent='Master render failed';status('Mastering failed: '+e.message);}finally{btnStart.disabled=false;}
-  };
+  btnStart.onclick=async()=>{const source=await opts.getOriginalBuffer?.();if(!source){status('No audio loaded.');return;}try{btnStart.disabled=true;btnM.disabled=true;renderedMaster=null;mastered=null;root.querySelector('#hd-m').textContent='—';root.querySelector('#hd-d').textContent='—';let p=3;setProgress(p,'Preparing mastering chain…');stopProgressTimer();progressTimer=setInterval(()=>{if(p<18){p+=3;setProgress(p,'Preparing mastering chain…');}else if(p<42){p+=2;setProgress(p,hz.checked?'Applying Humanize Boost…':'Processing cleanup…');}else if(p<72){p+=2;setProgress(p,'Processing Quick Fix / Stereo / Polish…');}else if(p<92){p+=1;setProgress(p,'Finalizing Loudness / EQ / limiting…');}},350);
+      let working=source;
+      if(hz.checked){status(`Applying Humanize Boost (${hzp.value}) before mastering…`);working=applyHumanizeBoost(source,hzp.value,{cleanup:true});}
+      renderedMaster=await opts.renderMaster?.(working);
+      stopProgressTimer();if(!renderedMaster)throw new Error('Master render did not return an AudioBuffer');setProgress(100,'Mastering complete ✓');root.querySelector('#hd-ms').textContent=hz.checked?`Humanize ${hzp.value} + master ready`:'Master ready to analyze';btnM.disabled=false;status('Mastering complete. Step 3: Analyze Mastered, then compare Human-like change.');
+    }catch(e){stopProgressTimer();setProgress(0,'Mastering failed');root.querySelector('#hd-ms').textContent='Master render failed';status('Mastering failed: '+e.message);}finally{btnStart.disabled=false;}};
 
-  btnM.onclick=async()=>{
-    if(!renderedMaster){status('Click Start Mastering first so there is a fixed mastered result to compare.');return;}
-    try{btnM.disabled=true;status('Analyzing mastered result…');mastered=analyzeAudioBuffer(renderedMaster);render();status(`Mastered analyzed: ${mastered.aiPct}% AI-like / ${mastered.humanPct}% human-like. Compare the change, then Export WAV if satisfied.`);}catch(e){status('Master analysis failed: '+e.message);}finally{btnM.disabled=false;}
-  };
+  btnM.onclick=async()=>{if(!renderedMaster){status('Click Start Mastering first.');return;}try{btnM.disabled=true;status('Analyzing mastered result…');mastered=analyzeAudioBuffer(renderedMaster);render();status(`Mastered analyzed: ${mastered.aiPct}% AI-like / ${mastered.humanPct}% human-like. Human-like change ${original?((mastered.humanPct-original.humanPct)>=0?'+':'')+(mastered.humanPct-original.humanPct):'—'} points.`);}catch(e){status('Master analysis failed: '+e.message);}finally{btnM.disabled=false;}};
 
-  document.addEventListener('click',()=>setTimeout(refreshReady,150),true);
-  setInterval(refreshReady,1500);
-  refreshReady();
-  return {root,toggle,refreshReady};
+  document.addEventListener('click',()=>setTimeout(refreshReady,150),true);setInterval(refreshReady,1500);refreshReady();return{root,toggle,refreshReady};
 }

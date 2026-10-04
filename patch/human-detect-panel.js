@@ -2,22 +2,58 @@ import { analyzeAudioBuffer, compareReports } from './human-detector-core.js';
 
 export function mountHumanDetectPanel(opts={}) {
   const style=document.createElement('style');
-  style.textContent=`.hd-float{position:fixed;right:18px;bottom:18px;width:min(430px,calc(100vw - 36px));z-index:99999;padding:14px;border:1px solid rgba(127,127,127,.3);border-radius:14px;background:rgba(24,24,28,.96);box-shadow:0 18px 50px rgba(0,0,0,.38);color:#f2f2f2;font-family:system-ui,sans-serif}.hd-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.hd-head small{display:block;opacity:.65;margin-top:2px}.hd-badge{font-size:10px;border:1px solid currentColor;border-radius:999px;padding:3px 7px;opacity:.75}.hd-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}.hd-card{background:rgba(255,255,255,.06);padding:10px;border-radius:10px}.hd-card span,.hd-card em{display:block;font-size:10px;opacity:.65;font-style:normal}.hd-card strong{font-size:17px;display:block;margin:3px 0}.hd-actions{display:flex;gap:8px;margin-top:10px}.hd-actions button{flex:1;border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:9px;background:rgba(255,255,255,.08);color:inherit;cursor:pointer}.hd-actions button:disabled{opacity:.4;cursor:not-allowed}.hd-status{font-size:11px;opacity:.72;margin-top:9px}.hd-close{background:none;border:0;color:inherit;cursor:pointer;font-size:18px;opacity:.7}.hd-toggle{position:fixed;right:18px;bottom:18px;z-index:99998;border-radius:999px;padding:10px 14px;border:1px solid rgba(127,127,127,.3);background:#24242a;color:#fff;cursor:pointer}@media(max-width:760px){.hd-grid{grid-template-columns:1fr}.hd-float{left:12px;right:12px;width:auto;bottom:12px}}`;
+  style.textContent=`.hd-float{position:fixed;right:18px;bottom:18px;width:min(470px,calc(100vw - 36px));z-index:99999;padding:14px;border:1px solid rgba(127,127,127,.3);border-radius:14px;background:rgba(24,24,28,.96);box-shadow:0 18px 50px rgba(0,0,0,.38);color:#f2f2f2;font-family:system-ui,sans-serif}.hd-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.hd-head small{display:block;opacity:.65;margin-top:2px}.hd-badge{font-size:10px;border:1px solid currentColor;border-radius:999px;padding:3px 7px;opacity:.75}.hd-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}.hd-card{background:rgba(255,255,255,.06);padding:10px;border-radius:10px}.hd-card span,.hd-card em{display:block;font-size:10px;opacity:.65;font-style:normal}.hd-card strong{font-size:17px;display:block;margin:3px 0}.hd-actions{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:8px;margin-top:10px}.hd-actions button{border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:10px 8px;background:rgba(255,255,255,.08);color:inherit;cursor:pointer}.hd-actions button:disabled{opacity:.4;cursor:not-allowed}.hd-actions .hd-master{background:#b9a7ef;color:#121217;font-weight:700}.hd-status{font-size:11px;opacity:.75;margin-top:9px;line-height:1.45}.hd-close{background:none;border:0;color:inherit;cursor:pointer;font-size:18px;opacity:.7}.hd-toggle{position:fixed;right:18px;bottom:18px;z-index:99998;border-radius:999px;padding:10px 14px;border:1px solid rgba(127,127,127,.3);background:#24242a;color:#fff;cursor:pointer}@media(max-width:760px){.hd-grid,.hd-actions{grid-template-columns:1fr}.hd-float{left:12px;right:12px;width:auto;bottom:12px}}`;
   document.head.appendChild(style);
 
   const toggle=document.createElement('button'); toggle.className='hd-toggle'; toggle.textContent='AI / Human Check'; document.body.appendChild(toggle);
   const root=document.createElement('section'); root.className='hd-float'; root.style.display='none';
-  root.innerHTML=`<div class="hd-head"><div><b>AI / Human Character Check</b><small>Local DSP + fakeprint heuristic • no upload</small></div><div><span class="hd-badge">BETA</span><button class="hd-close">×</button></div></div><div class="hd-grid"><div class="hd-card"><span>Original</span><strong id="hd-o">—</strong><em id="hd-os">Load a track first</em></div><div class="hd-card"><span>Mastered</span><strong id="hd-m">—</strong><em id="hd-ms">Master/render first</em></div><div class="hd-card"><span>Human-like change</span><strong id="hd-d">—</strong><em>points</em></div></div><div class="hd-actions"><button id="hd-ao">Analyze Original</button><button id="hd-am">Analyze Mastered</button></div><div class="hd-status" id="hd-status">Load an audio file, then run Original and Mastered analysis.</div>`;
+  root.innerHTML=`<div class="hd-head"><div><b>AI / Human Character Check</b><small>Analyze → Master → Compare • local processing</small></div><div><span class="hd-badge">BETA</span><button class="hd-close">×</button></div></div><div class="hd-grid"><div class="hd-card"><span>Original</span><strong id="hd-o">—</strong><em id="hd-os">Load a track first</em></div><div class="hd-card"><span>Mastered</span><strong id="hd-m">—</strong><em id="hd-ms">Start mastering first</em></div><div class="hd-card"><span>Human-like change</span><strong id="hd-d">—</strong><em>points</em></div></div><div class="hd-actions"><button id="hd-ao">1. Analyze Original</button><button class="hd-master" id="hd-start">2. Start Mastering</button><button id="hd-am">3. Analyze Mastered</button></div><div class="hd-status" id="hd-status">Load a song, analyze the original, render the active mastering chain, then analyze the mastered result.</div>`;
   document.body.appendChild(root);
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';refreshReady();};
   root.querySelector('.hd-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};
-  let original=null, mastered=null;
-  const btnO=root.querySelector('#hd-ao'), btnM=root.querySelector('#hd-am');
+
+  let original=null, mastered=null, renderedMaster=null;
+  const btnO=root.querySelector('#hd-ao'), btnStart=root.querySelector('#hd-start'), btnM=root.querySelector('#hd-am');
   const status=t=>root.querySelector('#hd-status').textContent=t;
   const render=()=>{if(original){root.querySelector('#hd-o').textContent=`${original.humanPct}% human-like`;root.querySelector('#hd-os').textContent=`${original.aiPct}% AI-like • DSP ${original.dspPct}% • FP ${original.fakePct}%`;}if(mastered){root.querySelector('#hd-m').textContent=`${mastered.humanPct}% human-like`;root.querySelector('#hd-ms').textContent=`${mastered.aiPct}% AI-like • DSP ${mastered.dspPct}% • FP ${mastered.fakePct}%`;}const c=compareReports(original,mastered);if(c)root.querySelector('#hd-d').textContent=`${c.humanDelta>=0?'+':''}${c.humanDelta}`;};
-  async function refreshReady(){try{const b=await opts.getOriginalBuffer?.();const ready=!!b;btnO.disabled=!ready;btnM.disabled=!ready;if(ready){root.querySelector('#hd-os').textContent=original?root.querySelector('#hd-os').textContent:'Ready to analyze';root.querySelector('#hd-ms').textContent=mastered?root.querySelector('#hd-ms').textContent:'Ready to render/analyze';status('Audio ready. Analyze Original first, then Mastered.');}else{root.querySelector('#hd-os').textContent='Load a track first';root.querySelector('#hd-ms').textContent='Load a track first';status('No audio loaded yet. Select or drag a song into Web Audio Mastering first.');}}catch{btnO.disabled=true;btnM.disabled=true;}}
-  btnO.onclick=async()=>{const b=await opts.getOriginalBuffer?.();if(!b){status('No audio loaded. Select a song first.');await refreshReady();return;}try{btnO.disabled=true;status('Analyzing original…');original=analyzeAudioBuffer(b);render();status(`Original: ${original.aiPct}% AI-like / ${original.humanPct}% human-like`);}catch(e){status('Analysis failed: '+e.message);}finally{btnO.disabled=false;}};
-  btnM.onclick=async()=>{const source=await opts.getOriginalBuffer?.();if(!source){status('No audio loaded. Select a song first.');await refreshReady();return;}try{btnM.disabled=true;status('Rendering current master and analyzing…');const b=await opts.getMasteredBuffer?.();if(!b){status('Mastered audio is not ready yet. Try again after the master preview finishes rendering.');return;}mastered=analyzeAudioBuffer(b);render();status(`Mastered: ${mastered.aiPct}% AI-like / ${mastered.humanPct}% human-like`);}catch(e){status('Master analysis failed: '+e.message);}finally{btnM.disabled=false;}};
+
+  async function refreshReady(){
+    try{
+      const b=await opts.getOriginalBuffer?.(); const ready=!!b;
+      btnO.disabled=!ready; btnStart.disabled=!ready; btnM.disabled=!ready || !renderedMaster;
+      if(ready){
+        if(!original) root.querySelector('#hd-os').textContent='Ready to analyze';
+        if(!renderedMaster && !mastered) root.querySelector('#hd-ms').textContent='Start mastering first';
+        if(!original) status('Step 1: Analyze Original. Then Start Mastering.');
+      }else{
+        root.querySelector('#hd-os').textContent='Load a track first'; root.querySelector('#hd-ms').textContent='Load a track first';
+        status('No audio loaded yet. Select or drag a song into Web Audio Mastering first.');
+      }
+    }catch{btnO.disabled=true;btnStart.disabled=true;btnM.disabled=true;}
+  }
+
+  btnO.onclick=async()=>{
+    const b=await opts.getOriginalBuffer?.(); if(!b){status('No audio loaded. Select a song first.');await refreshReady();return;}
+    try{btnO.disabled=true;status('Analyzing original audio…');original=analyzeAudioBuffer(b);render();status(`Original analyzed: ${original.aiPct}% AI-like / ${original.humanPct}% human-like. Step 2: Start Mastering.`);}catch(e){status('Original analysis failed: '+e.message);}finally{btnO.disabled=false;}
+  };
+
+  btnStart.onclick=async()=>{
+    const source=await opts.getOriginalBuffer?.(); if(!source){status('No audio loaded. Select a song first.');return;}
+    try{
+      btnStart.disabled=true; btnM.disabled=true; renderedMaster=null; mastered=null; root.querySelector('#hd-m').textContent='—'; root.querySelector('#hd-ms').textContent='Rendering current mastering chain…'; root.querySelector('#hd-d').textContent='—';
+      status('Mastering/rendering with the current Quick Fix, Stereo, Polish, Loudness and EQ settings…');
+      renderedMaster=await opts.renderMaster?.();
+      if(!renderedMaster) throw new Error('Master render did not return an AudioBuffer');
+      root.querySelector('#hd-ms').textContent='Master ready to analyze'; btnM.disabled=false;
+      status('Mastering complete. Step 3: click Analyze Mastered, then Export WAV when satisfied.');
+    }catch(e){root.querySelector('#hd-ms').textContent='Master render failed';status('Mastering failed: '+e.message);}finally{btnStart.disabled=false;}
+  };
+
+  btnM.onclick=async()=>{
+    if(!renderedMaster){status('Click Start Mastering first so there is a fixed mastered result to compare.');return;}
+    try{btnM.disabled=true;status('Analyzing mastered result…');mastered=analyzeAudioBuffer(renderedMaster);render();status(`Mastered analyzed: ${mastered.aiPct}% AI-like / ${mastered.humanPct}% human-like. Compare the change, then Export WAV if satisfied.`);}catch(e){status('Master analysis failed: '+e.message);}finally{btnM.disabled=false;}
+  };
+
   document.addEventListener('click',()=>setTimeout(refreshReady,150),true);
   setInterval(refreshReady,1500);
   refreshReady();

@@ -27,8 +27,6 @@ window.addEventListener('DOMContentLoaded', () => {
         const result = await renderToAudioBuffer(fileState.originalBuffer, settings, 'export');
         if (!result || !result.buffer) return null;
 
-        // Keep the exact rendered result as the current master preview so analysis,
-        // playback and later export are based on the same active mastering settings.
         fileState.cachedRenderBuffer = result.buffer;
         fileState.cachedRenderLufs = result.lufs ?? null;
         audioNodes.buffer = result.buffer;
@@ -53,9 +51,9 @@ app.write_text(text, encoding='utf-8')
 pkg_path = root / 'package.json'
 pkg = json.loads(pkg_path.read_text(encoding='utf-8'))
 pkg['name'] = 'web-audio-mastering-humandetect'
-pkg['version'] = '1.4.2'
+pkg['version'] = '1.4.3'
 pkg.setdefault('build', {})['productName'] = 'Web Audio Mastering HumanDetect'
 pkg['build']['appId'] = 'com.webaudio.mastering.humandetect'
 pkg_path.write_text(json.dumps(pkg, indent=2) + '\n', encoding='utf-8')
 
-print('HumanDetect v1.4.2 patch applied successfully')
+print('HumanDetect v1.4.3 patch applied successfully')

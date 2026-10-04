@@ -9,20 +9,21 @@ import_line = "import { mountHumanDetectPanel } from './human-detect/human-detec
 if import_line not in text:
     text = import_line + text
 
-marker = '// HUMANDETECT_INTEGRATION_V1'
+marker = '// HUMANDETECT_INTEGRATION_V2'
 if marker not in text:
     text += r'''
 
-// HUMANDETECT_INTEGRATION_V1
+// HUMANDETECT_INTEGRATION_V2
 // Local-only characteristic analysis. Scores are estimates, not proof of authorship.
 window.addEventListener('DOMContentLoaded', () => {
   try {
     mountHumanDetectPanel({
-      getOriginalBuffer: async () => fileState.originalBuffer,
+      getOriginalBuffer: async () => fileState.originalBuffer || null,
       getMasteredBuffer: async () => {
         if (!fileState.originalBuffer) return null;
-        // Always render the current full chain, so the detector reflects the exact
-        // current mastering settings instead of a potentially stale preview cache.
+        if (fileState.cachedRenderBuffer && !fileState.isRenderingCache) {
+          return fileState.cachedRenderBuffer;
+        }
         const settings = (typeof getExportSettings === 'function')
           ? getExportSettings()
           : getCurrentSettings();
@@ -41,9 +42,9 @@ app.write_text(text, encoding='utf-8')
 pkg_path = root / 'package.json'
 pkg = json.loads(pkg_path.read_text(encoding='utf-8'))
 pkg['name'] = 'web-audio-mastering-humandetect'
-pkg['version'] = '1.4.0'
+pkg['version'] = '1.4.1'
 pkg.setdefault('build', {})['productName'] = 'Web Audio Mastering HumanDetect'
 pkg['build']['appId'] = 'com.webaudio.mastering.humandetect'
 pkg_path.write_text(json.dumps(pkg, indent=2) + '\n', encoding='utf-8')
 
-print('HumanDetect patch applied successfully')
+print('HumanDetect v1.4.1 patch applied successfully')

@@ -35,10 +35,10 @@ preload.write_text(pt,encoding='utf-8')
 
 main=root/'electron'/'main.js'
 mt=main.read_text(encoding='utf-8')
-if 'HUMANDETECT_LCROS_DETECTOR_V21' not in mt:
+if 'HUMANDETECT_LCROS_DETECTOR_V211' not in mt:
     mt += r'''
 
-// HUMANDETECT_LCROS_DETECTOR_V21
+// HUMANDETECT_LCROS_DETECTOR_V211
 function lcrosDir(){ return path.join(app.getPath('userData'),'lcros_ai_music_detector'); }
 function lcrosVenvPython(){ return path.join(lcrosDir(),'.venv','Scripts','python.exe'); }
 function lcrosStatusSync(){
@@ -52,28 +52,21 @@ function lcrosStatusSync(){
     return {available:r.status===0,reason:r.status===0?null:(r.stderr||r.stdout||'import failed').slice(-1500),dir,python:py};
   }catch(e){ return {available:false,reason:e.message,dir,python:py}; }
 }
-function preferredPython311(){
-  try{
-    const r=spawnSync('py',['-3.11','-c','import sys; print(sys.executable)'],{encoding:'utf8',windowsHide:true});
-    if(r.status===0) return {cmd:'py',prefix:['-3.11']};
-  }catch(_){}
-  return null;
-}
 ipcMain.handle('lcros-detector-status',async()=>lcrosStatusSync());
 ipcMain.handle('lcros-detector-setup',async()=>{
   try{
-    const p311=preferredPython311();
-    if(!p311) return {success:false,error:'Detector 3 requires Python 3.11. Install Python 3.11 x64 once, then press Setup D3 again.'};
+    const mp=await ensureManagedPython311();
+    if(!mp.success) return {success:false,error:'D3 Python setup failed: '+(mp.error||'unknown error')};
     const dir=lcrosDir(); fs.mkdirSync(dir,{recursive:true});
     const py=lcrosVenvPython();
     if(!fs.existsSync(py)){
-      const v=await runProcess(p311.cmd,[...p311.prefix,'-m','venv','.venv'],{cwd:dir});
-      if(v.code!==0) return {success:false,error:'Could not create Detector 3 Python 3.11 environment: '+(v.err||v.out).slice(-1800)};
+      const v=await runProcess(mp.python,['-m','venv','.venv'],{cwd:dir});
+      if(v.code!==0) return {success:false,error:'Could not create Detector 3 environment: '+(v.err||v.out).slice(-1800)};
     }
     let r=await runProcess(py,['-m','pip','install','--upgrade','pip','setuptools','wheel'],{cwd:dir});
-    if(r.code!==0) return {success:false,error:'pip setup failed: '+(r.err||r.out).slice(-1800)};
-    r=await runProcess(py,['-m','pip','install','torch','torchaudio','--index-url','https://download.pytorch.org/whl/cpu'],{cwd:dir});
-    if(r.code!==0) return {success:false,error:'CPU Torch install failed: '+(r.err||r.out).slice(-2200)};
+    if(r.code!==0) return {success:false,error:'D3 pip setup failed: '+(r.err||r.out).slice(-1800)};
+    r=await runProcess(py,['-m','pip','install','torch==2.7.1','torchaudio==2.7.1','--index-url','https://download.pytorch.org/whl/cpu'],{cwd:dir});
+    if(r.code!==0) return {success:false,error:'D3 CPU Torch install failed: '+(r.err||r.out).slice(-2200)};
     r=await runProcess(py,['-m','pip','install','laion_clap==1.1.7','hiclass==4.11.0','scikit-learn==1.1.2','numpy==1.23.5','soundfile==0.12.1','huggingface-hub==0.36.0'],{cwd:dir});
     if(r.code!==0) return {success:false,error:'Detector 3 dependencies failed: '+(r.err||r.out).slice(-2400)};
     const code=[
@@ -132,6 +125,6 @@ main.write_text(mt,encoding='utf-8')
 
 pkg_path=root/'package.json'
 pkg=json.loads(pkg_path.read_text(encoding='utf-8'))
-pkg['version']='2.1.0'
+pkg['version']='2.1.1'
 pkg_path.write_text(json.dumps(pkg,indent=2)+'\n',encoding='utf-8')
-print('HumanDetect v2.1.0 ensemble detector patch applied')
+print('HumanDetect v2.1.1 detector 3 compatibility patch applied')

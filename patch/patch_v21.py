@@ -53,15 +53,23 @@ function lcrosStatusSync(){
     return {available:r.status===0,reason:r.status===0?null:(r.stderr||r.stdout||'import failed').slice(-1500),dir,python:py};
   }catch(e){ return {available:false,reason:e.message,dir,python:py}; }
 }
+function preferredPython311(){
+  try{
+    const r=spawnSync('py',['-3.11','-c','import sys; print(sys.executable)'],{encoding:'utf8',windowsHide:true});
+    if(r.status===0) return {cmd:'py',prefix:['-3.11']};
+  }catch(_){}
+  return null;
+}
 ipcMain.handle('lcros-detector-status',async()=>lcrosStatusSync());
 ipcMain.handle('lcros-detector-setup',async()=>{
   try{
-    const basePy=pythonCmd(); if(!basePy) return {success:false,error:'Python 3.10–3.12 is required.'};
+    const p311=preferredPython311();
+    if(!p311) return {success:false,error:'Detector 3 requires Python 3.11. Install Python 3.11 x64 once, then press Setup D3 again.'};
     const dir=lcrosDir(); fs.mkdirSync(dir,{recursive:true});
     const py=lcrosVenvPython();
     if(!fs.existsSync(py)){
-      const v=await runProcess(basePy,['-m','venv','.venv'],{cwd:dir});
-      if(v.code!==0) return {success:false,error:'Could not create Detector 3 environment: '+(v.err||v.out).slice(-1800)};
+      const v=await runProcess(p311.cmd,[...p311.prefix,'-m','venv','.venv'],{cwd:dir});
+      if(v.code!==0) return {success:false,error:'Could not create Detector 3 Python 3.11 environment: '+(v.err||v.out).slice(-1800)};
     }
     let r=await runProcess(py,['-m','pip','install','--upgrade','pip','setuptools','wheel'],{cwd:dir});
     if(r.code!==0) return {success:false,error:'pip setup failed: '+(r.err||r.out).slice(-1800)};
@@ -69,11 +77,11 @@ ipcMain.handle('lcros-detector-setup',async()=>{
     if(r.code!==0) return {success:false,error:'CPU Torch install failed: '+(r.err||r.out).slice(-2200)};
     r=await runProcess(py,['-m','pip','install','laion_clap==1.1.7','hiclass==4.11.0','scikit-learn==1.1.2','numpy==1.23.5','soundfile==0.12.1','huggingface-hub==0.36.0'],{cwd:dir});
     if(r.code!==0) return {success:false,error:'Detector 3 dependencies failed: '+(r.err||r.out).slice(-2400)};
-    const dl=`from huggingface_hub import hf_hub_download\nimport shutil,os\nd='${'${'}DIR${'}'}'`;
+    const escaped=dir.replace(/\\/g,'\\\\');
     const code=[
       'from huggingface_hub import hf_hub_download',
       'import shutil,os',
-      `d=r'''${dir.replace(/\\/g,'\\\\')}'''`,
+      `d=r'''${escaped}'''`,
       `a=hf_hub_download(repo_id='lcros/ai-music-detection',filename='models_and_scaler.pkl')`,
       `b=hf_hub_download(repo_id='lukewys/laion_clap',filename='music_audioset_epoch_15_esc_90.14.pt')`,
       `shutil.copy2(a,os.path.join(d,'models_and_scaler.pkl'))`,

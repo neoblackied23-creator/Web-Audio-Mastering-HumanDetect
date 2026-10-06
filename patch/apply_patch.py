@@ -5,17 +5,23 @@ root = Path('.')
 app = root / 'web' / 'app.js'
 text = app.read_text(encoding='utf-8')
 
-import_line = "import { mountHumanDetectPanel } from './human-detect/human-detect-panel.js';\n"
-if import_line not in text:
-    text = import_line + text
+imports = [
+    "import { mountHumanDetectPanel } from './human-detect/human-detect-panel.js';\n",
+    "import { mountAIMasteringPanel } from './human-detect/ai-mastering-panel.js';\n",
+    "import { applyAIMasteringStyle, getMasteringSettings } from './human-detect/ai-mastering-style.js';\n"
+]
+for line in reversed(imports):
+    if line not in text:
+        text = line + text
 
-marker = '// HUMANDETECT_INTEGRATION_V7'
+marker = '// HUMANDETECT_INTEGRATION_V8'
 if marker not in text:
     text += r'''
 
-// HUMANDETECT_INTEGRATION_V7
+// HUMANDETECT_INTEGRATION_V8
 window.addEventListener('DOMContentLoaded', () => {
   try {
+    mountAIMasteringPanel();
     const commitHumanDetectMaster = async (buffer, lufs = null) => {
       if (!buffer) return null;
       fileState.cachedRenderBuffer = buffer;
@@ -34,12 +40,25 @@ window.addEventListener('DOMContentLoaded', () => {
       getOriginalBuffer: async () => fileState.originalBuffer || null,
       getOriginalPath: async () => fileState.selectedFilePath || null,
       renderMaster: async (sourceOverride = null, options = {}) => {
-        const sourceBuffer = sourceOverride || fileState.originalBuffer;
+        let sourceBuffer = sourceOverride || fileState.originalBuffer;
         if (!sourceBuffer) return null;
+        const cfg = window.__aiMasteringConfig || { enabled:false };
+        if (cfg.enabled) {
+          sourceBuffer = applyAIMasteringStyle(sourceBuffer, cfg);
+        }
         const baseSettings = (typeof getExportSettings === 'function')
           ? getExportSettings()
           : getCurrentSettings();
         const settings = { ...baseSettings };
+        if (cfg.enabled) {
+          const ms = getMasteringSettings(cfg.profile, cfg.style, cfg.intensity);
+          settings.normalizeLoudness = true;
+          settings.targetLufs = ms.targetLufs;
+          settings.truePeakLimit = true;
+          settings.truePeakCeiling = ms.truePeakCeiling;
+          settings.tapeWarmth = true;
+          settings.centerBass = true;
+        }
         if (options.aiFix) {
           settings.eqLow = 1;
           settings.eqLowMid = -2;
@@ -63,7 +82,7 @@ window.addEventListener('DOMContentLoaded', () => {
       commitMaster: async (buffer) => commitHumanDetectMaster(buffer, null),
       getMasteredBuffer: async () => fileState.cachedRenderBuffer || null
     });
-    console.log('[HumanDetect] v1.8 panel mounted');
+    console.log('[HumanDetect] v1.9 panel mounted');
   } catch (err) {
     console.error('[HumanDetect] failed to mount:', err);
   }
@@ -150,9 +169,9 @@ main.write_text(mt, encoding='utf-8')
 pkg_path = root / 'package.json'
 pkg = json.loads(pkg_path.read_text(encoding='utf-8'))
 pkg['name'] = 'web-audio-mastering-humandetect'
-pkg['version'] = '1.8.0'
+pkg['version'] = '1.9.0'
 pkg.setdefault('build', {})['productName'] = 'Web Audio Mastering HumanDetect'
 pkg['build']['appId'] = 'com.webaudio.mastering.humandetect'
 pkg_path.write_text(json.dumps(pkg, indent=2) + '\n', encoding='utf-8')
 
-print('HumanDetect v1.8.0 patch applied successfully')
+print('HumanDetect v1.9.0 patch applied successfully')

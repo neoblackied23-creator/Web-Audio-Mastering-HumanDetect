@@ -40,11 +40,15 @@ jobs:
           Copy-Item overlay/patch/stem-engine.js app/web/human-detect/stem-engine.js
           Copy-Item overlay/patch/ai-mastering-style.js app/web/human-detect/ai-mastering-style.js
           Copy-Item overlay/patch/ai-mastering-panel.js app/web/human-detect/ai-mastering-panel.js
+          Copy-Item overlay/patch/external-detector-panel.js app/web/human-detect/external-detector-panel.js
           Copy-Item overlay/patch/apply_patch.py app/apply_patch.py
+          Copy-Item overlay/patch/patch_v2.py app/patch_v2.py
 
-      - name: Apply integration patch
+      - name: Apply integration patches
         working-directory: app
-        run: python apply_patch.py
+        run: |
+          python apply_patch.py
+          python patch_v2.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -70,6 +74,6 @@ jobs:
       - name: Upload portable EXE
         uses: actions/upload-artifact@v4
         with:
-          name: Web-Audio-Mastering-HumanDetect-1.9.0-Windows
+          name: Web-Audio-Mastering-HumanDetect-2.0.0-Windows
           path: app/release/*.exe
           if-no-files-found: error

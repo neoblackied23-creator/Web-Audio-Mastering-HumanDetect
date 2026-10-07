@@ -39,9 +39,10 @@ ipcMain.handle('clear-previous-project', async()=>{
       try{ if(fs.existsSync(p)) fs.rmSync(p,{recursive:true,force:true}); }catch(_){}
     }
     try{
-      if(session?.defaultSession){
-        await session.defaultSession.clearCache();
-        await session.defaultSession.clearStorageData({
+      const ses=mainWindow?.webContents?.session;
+      if(ses){
+        await ses.clearCache();
+        await ses.clearStorageData({
           storages:['localstorage','sessionstorage','indexdb','cachestorage','serviceworkers']
         });
       }

@@ -40,7 +40,7 @@ async function localScoreForPath(path){
 }
 export function mountCalibrationPanel(){
   const style=document.createElement('style');
-  style.textContent=`.cal-toggle{position:fixed;left:18px;bottom:114px;z-index:99994;border-radius:999px;padding:10px 14px;border:1px solid #555;background:#24242a;color:#fff}.cal-panel{position:fixed;left:540px;bottom:18px;width:min(560px,calc(100vw - 36px));max-height:calc(100vh - 90px);overflow:auto;z-index:100002;padding:14px;border:1px solid #444;border-radius:14px;background:rgba(20,21,25,.98);box-shadow:0 18px 50px #0009;color:#f2f2f2;font-family:system-ui}.cal-head{display:flex;justify-content:space-between}.cal-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:9px}.cal-btn{border:1px solid #ffffff2b;border-radius:8px;padding:8px 10px;background:#ffffff14;color:inherit;cursor:pointer}.cal-btn.main{background:#b7e1ff;color:#101318;font-weight:700}.cal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}.cal-card{background:#ffffff0f;padding:9px;border-radius:9px}.cal-card small{display:block;opacity:.65}.cal-card b{font-size:16px}.cal-list{margin-top:10px;font-size:12px}.cal-item{display:grid;grid-template-columns:1.3fr .7fr .7fr .7fr .7fr auto;gap:5px;padding:6px 0;border-bottom:1px solid #ffffff14}.cal-note{font-size:11px;opacity:.7;line-height:1.4}.cal-close{background:none;border:0;color:inherit;font-size:18px}.cal-progress{margin-top:10px;padding:9px;border:1px solid #ffffff22;border-radius:8px;background:#ffffff08;font-size:12px}.cal-progress b{display:block;margin-bottom:3px}.cal-btn:disabled{opacity:.45;cursor:not-allowed}@media(max-width:1100px){.cal-panel{left:18px}.cal-grid{grid-template-columns:1fr 1fr}.cal-item{grid-template-columns:1fr 1fr}.cal-item span:first-child{grid-column:1/-1}}`;
+  style.textContent=`.cal-toggle{position:fixed;left:18px;bottom:114px;z-index:99994;border-radius:999px;padding:10px 14px;border:1px solid #555;background:#24242a;color:#fff}.cal-panel{position:fixed;left:540px;bottom:18px;width:min(560px,calc(100vw - 36px));max-height:calc(100vh - 90px);overflow:auto;z-index:100002;padding:14px;border:1px solid #444;border-radius:14px;background:rgba(20,21,25,.98);box-shadow:0 18px 50px #0009;color:#f2f2f2;font-family:system-ui}.cal-head{display:flex;justify-content:space-between}.cal-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:9px}.cal-btn{border:1px solid #ffffff2b;border-radius:8px;padding:8px 10px;background:#ffffff14;color:inherit;cursor:pointer}.cal-btn.main{background:#b7e1ff;color:#101318;font-weight:700}.cal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}.cal-card{background:#ffffff0f;padding:9px;border-radius:9px}.cal-card small{display:block;opacity:.65}.cal-card b{font-size:16px}.cal-list{margin-top:10px;font-size:12px}.cal-item{display:grid;grid-template-columns:1.3fr .7fr .7fr .7fr .7fr auto;gap:5px;padding:6px 0;border-bottom:1px solid #ffffff14}.cal-note{font-size:11px;opacity:.7;line-height:1.4}.cal-close{background:none;border:0;color:inherit;font-size:18px}.cal-progress{margin-top:10px;padding:9px;border:1px solid #ffffff22;border-radius:8px;background:#ffffff08;font-size:12px}.cal-progress b{display:block;margin-bottom:3px}.cal-btn:disabled{opacity:.45;cursor:not-allowed}.cal-log{margin-top:8px;max-height:130px;overflow:auto;background:#0004;border:1px solid #ffffff16;border-radius:7px;padding:7px;font:11px/1.4 ui-monospace,Consolas,monospace}.cal-log div{padding:1px 0}.cal-log .err{color:#ff9b9b}.cal-log .ok{color:#86e3a5}@media(max-width:1100px){.cal-panel{left:18px}.cal-grid{grid-template-columns:1fr 1fr}.cal-item{grid-template-columns:1fr 1fr}.cal-item span:first-child{grid-column:1/-1}}`;
   document.head.appendChild(style);
   const toggle=document.createElement('button');toggle.className='cal-toggle';toggle.textContent='Calibration';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='cal-panel';root.style.display='none';
@@ -67,7 +67,7 @@ export function mountCalibrationPanel(){
     <button class="cal-btn" id="cal-run-human">Run Human Pack</button>
     <span class="cal-note" id="cal-pack-status">Human pack not checked.</span>
   </div>
-  <div class="cal-progress"><b>Benchmark Job Status</b><span id="cal-job-status">Idle</span></div>
+  <div class="cal-progress"><b>Benchmark Job Status</b><span id="cal-job-status">IDLE</span><div id="cal-progress-text" class="cal-note">No active job.</div><div id="cal-log" class="cal-log"></div></div>
   <div class="cal-note" style="margin-top:8px">Use tracks whose origin you actually know. A mastered AI track is still labeled AI for detector calibration; mastering quality and authorship are separate questions.</div>
   <div class="cal-list" id="cal-list"></div>`;
   document.body.appendChild(root);
@@ -75,8 +75,11 @@ export function mountCalibrationPanel(){
   let rows=loadRows();
   let activeJob=null;
   const jobButtons=()=>['#cal-ai-files','#cal-mastered-files','#cal-download-human','#cal-run-human'].map(s=>$(s)).filter(Boolean);
-  function setJob(name){activeJob=name;jobButtons().forEach(b=>b.disabled=!!name);root.dataset.busy=name||'';const el=$('#cal-job-status');if(el)el.textContent='RUNNING: '+name;}
-  function clearJob(){activeJob=null;jobButtons().forEach(b=>b.disabled=false);root.dataset.busy='';const el=$('#cal-job-status');if(el)el.textContent='Idle';}
+  function stamp(){return new Date().toLocaleTimeString();}
+  function log(msg,type='info'){const el=$('#cal-log');if(!el)return;const row=document.createElement('div');row.className=type==='error'?'err':type==='ok'?'ok':'';row.textContent='['+stamp()+'] '+msg;el.appendChild(row);el.scrollTop=el.scrollHeight;}
+  function progress(msg){const el=$('#cal-progress-text');if(el)el.textContent=msg;}
+  function setJob(name){activeJob=name;jobButtons().forEach(b=>b.disabled=!!name);root.dataset.busy=name||'';const el=$('#cal-job-status');if(el)el.textContent='RUNNING: '+name;progress('Starting '+name+'…');log('START '+name);}
+  function clearJob(finalText='IDLE'){const name=activeJob;activeJob=null;jobButtons().forEach(b=>b.disabled=false);root.dataset.busy='';const el=$('#cal-job-status');if(el)el.textContent=finalText; if(name)log(finalText+' '+name,finalText==='DONE'?'ok':'info');}
   function busyMessage(){return activeJob?('Another benchmark is still running: '+activeJob+'. Wait until it finishes.'):null;}
   function redraw(){
     const m=metrics(rows);
@@ -109,12 +112,12 @@ export function mountCalibrationPanel(){
       for(let i=0;i<paths.length;i++){
         const path=paths[i];
         const name=(path.split(/[/\\]/).pop()||'AI reference');
-        statusEl.textContent=`File ${i+1}/${paths.length}: D1 ${name}`;
+        statusEl.textContent=`File ${i+1}/${paths.length}: D1 ${name}`; progress(`File ${i+1}/${paths.length} • D1 Local • ${name}`); log(`File ${i+1}/${paths.length} D1 ${name}`);
         const d1=await localScoreForPath(path);
-        statusEl.textContent=`File ${i+1}/${paths.length}: D2 ${name}`;
+        statusEl.textContent=`File ${i+1}/${paths.length}: D2 ${name}`; progress(`File ${i+1}/${paths.length} • D2 MS-CLAP • ${name}`); log(`File ${i+1}/${paths.length} D2 ${name}`);
         const r2=await window.electronAPI?.runOpenDetector?.(path);
         const d2=r2?.success?humanProbFromExternal(r2):null;
-        statusEl.textContent=`File ${i+1}/${paths.length}: D3 ${name}`;
+        statusEl.textContent=`File ${i+1}/${paths.length}: D3 ${name}`; progress(`File ${i+1}/${paths.length} • D3 lcros CLAP • ${name}`); log(`File ${i+1}/${paths.length} D3 ${name}`);
         const r3=await window.electronAPI?.runLcrosDetector?.(path);
         const d3=r3?.success?humanProbFromExternal(r3):null;
         if([d1,d2,d3].every(Number.isFinite)){
@@ -122,11 +125,11 @@ export function mountCalibrationPanel(){
           saveRows(rows);redraw();
         }
       }
-      statusEl.textContent=`AI batch complete: ${paths.length} file(s) processed.`;
+      statusEl.textContent=`AI batch complete: ${paths.length} file(s) processed.`; progress(`Complete • ${paths.length}/${paths.length} files`); log(`AI batch complete: ${paths.length} files`,'ok');
     }catch(e){
-      statusEl.textContent='AI batch failed: '+e.message;
+      statusEl.textContent='AI batch failed: '+e.message; progress('ERROR: '+e.message); log('ERROR '+e.message,'error');
     }finally{
-      clearJob();
+      clearJob(statusEl.textContent.startsWith('AI batch complete')?'DONE':'IDLE');
     }
   }
 
@@ -140,13 +143,13 @@ export function mountCalibrationPanel(){
     if(activeJob){$('#cal-pack-status').textContent=busyMessage();return;}
     setJob('Human pack download');
     try{
-      $('#cal-pack-status').textContent='Downloading CC0 reference pack…';
+      $('#cal-pack-status').textContent='Downloading CC0 reference pack…'; progress('Downloading 5 CC0 human references…'); log('Downloading CC0 human reference pack');
       const r=await window.electronAPI?.setupHumanBenchmarkPack?.();
       if(!r?.success)throw new Error(r?.error||'Benchmark download failed');
       window.__hdHumanBenchmarkPack=r.entries||[];
-      $('#cal-pack-status').textContent=`${(r.entries||[]).length} human references ready.`;
-    }catch(e){$('#cal-pack-status').textContent='Download failed: '+e.message;}
-    finally{clearJob();}
+      $('#cal-pack-status').textContent=`${(r.entries||[]).length} human references ready.`; progress(`${(r.entries||[]).length} human references ready`); log('Human reference download complete','ok');
+    }catch(e){$('#cal-pack-status').textContent='Download failed: '+e.message;progress('ERROR: '+e.message);log('ERROR '+e.message,'error');}
+    finally{clearJob($('#cal-pack-status').textContent.includes('ready')?'DONE':'IDLE');}
   };
   $('#cal-run-human').onclick=async()=>{
     if(activeJob){$('#cal-pack-status').textContent=busyMessage();return;}
@@ -164,12 +167,12 @@ export function mountCalibrationPanel(){
       saveRows(rows);redraw();
       for(let i=0;i<entries.length;i++){
         const e=entries[i];
-        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D1 ${e.name}`;
+        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D1 ${e.name}`; progress(`Human ${i+1}/${entries.length} • D1 Local • ${e.name}`); log(`Human ${i+1}/${entries.length} D1 ${e.name}`);
         const d1=await localScoreForPath(e.path);
-        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D2 ${e.name}`;
+        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D2 ${e.name}`; progress(`Human ${i+1}/${entries.length} • D2 MS-CLAP • ${e.name}`); log(`Human ${i+1}/${entries.length} D2 ${e.name}`);
         const r2=await window.electronAPI?.runOpenDetector?.(e.path);
         const d2=r2?.success?humanProbFromExternal(r2):null;
-        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D3 ${e.name}`;
+        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D3 ${e.name}`; progress(`Human ${i+1}/${entries.length} • D3 lcros CLAP • ${e.name}`); log(`Human ${i+1}/${entries.length} D3 ${e.name}`);
         const r3=await window.electronAPI?.runLcrosDetector?.(e.path);
         const d3=r3?.success?humanProbFromExternal(r3):null;
         if([d1,d2,d3].every(Number.isFinite)){
@@ -177,9 +180,9 @@ export function mountCalibrationPanel(){
           saveRows(rows);redraw();
         }
       }
-      $('#cal-pack-status').textContent=`Human pack complete: ${rows.filter(x=>x.source==='cc0-human-pack-v1').length}/${entries.length} scored.`;
-    }catch(e){$('#cal-pack-status').textContent='Benchmark failed: '+e.message;}
-    finally{clearJob();}
+      $('#cal-pack-status').textContent=`Human pack complete: ${rows.filter(x=>x.source==='cc0-human-pack-v1').length}/${entries.length} scored.`; progress(`Complete • ${entries.length}/${entries.length} human references`); log('Human benchmark complete','ok');
+    }catch(e){$('#cal-pack-status').textContent='Benchmark failed: '+e.message;progress('ERROR: '+e.message);log('ERROR '+e.message,'error');}
+    finally{clearJob($('#cal-pack-status').textContent.startsWith('Human pack complete')?'DONE':'IDLE');}
   };
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';redraw();};
   $('.cal-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};

@@ -1,191 +1,83 @@
 import { analyzeAudioBuffer } from './human-detector-core.js';
-function clamp(v,a=0,b=100){return Math.max(a,Math.min(b,v));}
 function loadRows(){try{return JSON.parse(localStorage.getItem('hd_calibration_rows_v22')||'[]')}catch(_){return[]}}
 function saveRows(rows){localStorage.setItem('hd_calibration_rows_v22',JSON.stringify(rows));}
-function targetFor(label){return label==='human'?100:0;}
-function metrics(rows){
-  const usable=rows.filter(r=>Number.isFinite(r.d1)&&Number.isFinite(r.d2)&&Number.isFinite(r.d3));
-  const out={count:usable.length,weights:{d1:1/3,d2:1/3,d3:1/3},mae:{d1:null,d2:null,d3:null}};
-  if(!usable.length)return out;
-  for(const k of ['d1','d2','d3']){
-    const mae=usable.reduce((s,r)=>s+Math.abs(Number(r[k])-targetFor(r.label)),0)/usable.length;
-    out.mae[k]=mae;
+function isHuman(r){return r.label==='human'}
+function isAI(r){return r.label==='ai_raw'||r.label==='ai_mastered'}
+function balancedMetrics(rows,key){
+  const data=rows.filter(r=>Number.isFinite(r[key])&&(isHuman(r)||isAI(r)));
+  const hs=data.filter(isHuman), as=data.filter(isAI);
+  if(!hs.length||!as.length)return {threshold:null,balancedAccuracy:null,humanRecall:null,aiRecall:null,falseHuman:null,falseAI:null,gap:null,hMean:null,aMean:null};
+  const vals=[...new Set(data.map(r=>Number(r[key])).sort((a,b)=>a-b))];
+  const cand=[0,...vals.map((v,i)=>i<vals.length-1?(v+vals[i+1])/2:v),100];
+  let best=null;
+  for(const t of cand){
+    const hr=hs.filter(r=>r[key]>=t).length/hs.length;
+    const ar=as.filter(r=>r[key]<t).length/as.length;
+    const ba=(hr+ar)/2;
+    const cur={threshold:t,balancedAccuracy:ba,humanRecall:hr,aiRecall:ar};
+    if(!best||ba>best.balancedAccuracy||(ba===best.balancedAccuracy&&Math.abs(t-50)<Math.abs(best.threshold-50)))best=cur;
   }
-  const raw={};
-  for(const k of ['d1','d2','d3']) raw[k]=1/Math.max(5,out.mae[k]);
-  const sum=raw.d1+raw.d2+raw.d3;
-  out.weights={d1:raw.d1/sum,d2:raw.d2/sum,d3:raw.d3/sum};
-  return out;
+  const hMean=hs.reduce((s,r)=>s+r[key],0)/hs.length,aMean=as.reduce((s,r)=>s+r[key],0)/as.length;
+  return {...best,falseHuman:1-best.aiRecall,falseAI:1-best.humanRecall,gap:hMean-aMean,hMean,aMean};
 }
-function fmt(v){return Number.isFinite(v)?v.toFixed(1)+'%':'—';}
-function humanProbFromExternal(r){
-  if(!r) return null;
-  const conf=Math.max(0,Math.min(1,Number(r.confidence)||0));
-  const label=String(r.label||'').toLowerCase();
-  if(label==='real'||label==='human'||label==='nonai') return conf*100;
-  if(label==='fake'||label==='ai') return (1-conf)*100;
-  return null;
+function metrics(rows){
+  const d1=balancedMetrics(rows,'d1'),d2=balancedMetrics(rows,'d2');
+  const q1=Math.max(.01,(d1.balancedAccuracy??.5)-.5),q2=Math.max(.01,(d2.balancedAccuracy??.5)-.5);
+  const s=q1+q2;
+  const out={count:rows.filter(r=>Number.isFinite(r.d1)&&Number.isFinite(r.d2)&&(isHuman(r)||isAI(r))).length,d1,d2,weights:{d1:q1/s,d2:q2/s},thresholds:{d1:d1.threshold??50,d2:d2.threshold??60}};
+  localStorage.setItem('hd_calibration_v23',JSON.stringify(out)); window.__hdCalibrationV23=out; return out;
 }
+function fmt(v,d=1){return Number.isFinite(v)?v.toFixed(d):'—'}
+function humanProbFromExternal(r){if(!r)return null;const c=Math.max(0,Math.min(1,Number(r.confidence)||0)),l=String(r.label||'').toLowerCase();if(['real','human','nonai'].includes(l))return c*100;if(['fake','ai'].includes(l))return(1-c)*100;return null}
 async function localScoreForPath(path){
-  const bytes=await window.electronAPI?.readFileData?.(path);
-  if(!bytes) throw new Error('Could not read benchmark audio.');
+  const bytes=await window.electronAPI?.readFileData?.(path); if(!bytes)throw new Error('Could not read audio.');
   const ctx=new (window.AudioContext||window.webkitAudioContext)();
-  try{
-    const u8=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);
-    const ab=u8.buffer.slice(u8.byteOffset,u8.byteOffset+u8.byteLength);
-    const audio=await ctx.decodeAudioData(ab);
-    const r=analyzeAudioBuffer(audio);
-    return Number(r.humanScore??r.humanPct);
-  } finally { try{await ctx.close();}catch(_){} }
+  try{const u8=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);const ab=u8.buffer.slice(u8.byteOffset,u8.byteOffset+u8.byteLength);const audio=await ctx.decodeAudioData(ab);const r=analyzeAudioBuffer(audio);return Number(r.humanScore??r.humanPct);}finally{try{await ctx.close()}catch(_){}}
 }
 export function mountCalibrationPanel(){
   const style=document.createElement('style');
-  style.textContent=`.cal-toggle{position:fixed;left:18px;bottom:114px;z-index:99994;border-radius:999px;padding:10px 14px;border:1px solid #555;background:#24242a;color:#fff}.cal-panel{position:fixed;left:540px;bottom:18px;width:min(560px,calc(100vw - 36px));max-height:calc(100vh - 90px);overflow:auto;z-index:100002;padding:14px;border:1px solid #444;border-radius:14px;background:rgba(20,21,25,.98);box-shadow:0 18px 50px #0009;color:#f2f2f2;font-family:system-ui}.cal-head{display:flex;justify-content:space-between}.cal-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:9px}.cal-btn{border:1px solid #ffffff2b;border-radius:8px;padding:8px 10px;background:#ffffff14;color:inherit;cursor:pointer}.cal-btn.main{background:#b7e1ff;color:#101318;font-weight:700}.cal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}.cal-card{background:#ffffff0f;padding:9px;border-radius:9px}.cal-card small{display:block;opacity:.65}.cal-card b{font-size:16px}.cal-list{margin-top:10px;font-size:12px}.cal-item{display:grid;grid-template-columns:1.3fr .7fr .7fr .7fr .7fr auto;gap:5px;padding:6px 0;border-bottom:1px solid #ffffff14}.cal-note{font-size:11px;opacity:.7;line-height:1.4}.cal-close{background:none;border:0;color:inherit;font-size:18px}.cal-progress{margin-top:10px;padding:9px;border:1px solid #ffffff22;border-radius:8px;background:#ffffff08;font-size:12px}.cal-progress b{display:block;margin-bottom:3px}.cal-btn:disabled{opacity:.45;cursor:not-allowed}.cal-log{margin-top:8px;max-height:130px;overflow:auto;background:#0004;border:1px solid #ffffff16;border-radius:7px;padding:7px;font:11px/1.4 ui-monospace,Consolas,monospace}.cal-log div{padding:1px 0}.cal-log .err{color:#ff9b9b}.cal-log .ok{color:#86e3a5}@media(max-width:1100px){.cal-panel{left:18px}.cal-grid{grid-template-columns:1fr 1fr}.cal-item{grid-template-columns:1fr 1fr}.cal-item span:first-child{grid-column:1/-1}}`;
+  style.textContent=`.cal-toggle{position:fixed;left:18px;bottom:114px;z-index:99994;border-radius:999px;padding:10px 14px;border:1px solid #555;background:#24242a;color:#fff}.cal-panel{position:fixed;left:540px;bottom:18px;width:min(620px,calc(100vw - 36px));max-height:calc(100vh - 90px);overflow:auto;z-index:100002;padding:14px;border:1px solid #444;border-radius:14px;background:rgba(20,21,25,.98);box-shadow:0 18px 50px #0009;color:#f2f2f2;font-family:system-ui}.cal-head{display:flex;justify-content:space-between}.cal-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:9px}.cal-btn{border:1px solid #ffffff2b;border-radius:8px;padding:8px 10px;background:#ffffff14;color:inherit;cursor:pointer}.cal-btn.main{background:#b7e1ff;color:#101318;font-weight:700}.cal-btn:disabled{opacity:.45;cursor:not-allowed}.cal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.cal-card{background:#ffffff0f;padding:9px;border-radius:9px}.cal-card small{display:block;opacity:.65}.cal-card b{font-size:16px}.cal-list{margin-top:10px;font-size:12px}.cal-item{display:grid;grid-template-columns:1.5fr .8fr .8fr .8fr auto;gap:5px;padding:6px 0;border-bottom:1px solid #ffffff14}.cal-note{font-size:11px;opacity:.72;line-height:1.4}.cal-close{background:none;border:0;color:inherit;font-size:18px}.cal-progress{margin-top:10px;padding:9px;border:1px solid #ffffff22;border-radius:8px;background:#ffffff08;font-size:12px}.cal-log{margin-top:8px;max-height:140px;overflow:auto;background:#0004;border:1px solid #ffffff16;border-radius:7px;padding:7px;font:11px/1.4 ui-monospace,Consolas,monospace}.cal-log .err{color:#ff9b9b}.cal-log .ok{color:#86e3a5}@media(max-width:1100px){.cal-panel{left:18px}.cal-grid{grid-template-columns:1fr}.cal-item{grid-template-columns:1fr 1fr}.cal-item span:first-child{grid-column:1/-1}}`;
   document.head.appendChild(style);
   const toggle=document.createElement('button');toggle.className='cal-toggle';toggle.textContent='Calibration';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='cal-panel';root.style.display='none';
-  root.innerHTML=`<div class="cal-head"><div><b>Detector Calibration Dashboard</b><div class="cal-note">v2.2 • label known references, learn detector weights</div></div><button class="cal-close">×</button></div>
+  root.innerHTML=`<div class="cal-head"><div><b>Detector Calibration Dashboard</b><div class="cal-note">v2.3 • D1 Fast + D2 Deep • threshold-based calibration</div></div><button class="cal-close">×</button></div>
   <div class="cal-grid">
-    <div class="cal-card"><small>Benchmarks</small><b id="cal-n">0</b></div>
-    <div class="cal-card"><small>D1 weight</small><b id="cal-w1">33.3%</b><small id="cal-e1">MAE —</small></div>
-    <div class="cal-card"><small>D2 weight</small><b id="cal-w2">33.3%</b><small id="cal-e2">MAE —</small></div>
-    <div class="cal-card"><small>D3 weight</small><b id="cal-w3">33.3%</b><small id="cal-e3">MAE —</small></div>
+    <div class="cal-card"><small>Benchmarks</small><b id="cal-n">0</b><small id="cal-balance">Need Human + AI</small></div>
+    <div class="cal-card"><small>D1 Fast</small><b id="cal-d1">Threshold —</b><small id="cal-d1m">Balanced accuracy —</small></div>
+    <div class="cal-card"><small>D2 Deep</small><b id="cal-d2">Threshold —</b><small id="cal-d2m">Balanced accuracy —</small></div>
   </div>
-  <div class="cal-row">
-    <button class="cal-btn main" id="cal-human">Save as Known Human</button>
-    <button class="cal-btn" id="cal-ai">Save as AI Raw</button>
-    <button class="cal-btn" id="cal-mastered">Save as AI Mastered</button>
-    <button class="cal-btn" id="cal-clear">Clear Benchmarks</button>
-  </div>
-  <div class="cal-row">
-    <button class="cal-btn main" id="cal-ai-files">Select AI Raw Files</button>
-    <button class="cal-btn" id="cal-mastered-files">Select AI Mastered Files</button>
-    <span class="cal-note" id="cal-ai-status">No AI batch running.</span>
-  </div>
-  <div class="cal-row">
-    <button class="cal-btn main" id="cal-download-human">Download 5 CC0 Human References</button>
-    <button class="cal-btn" id="cal-run-human">Run Human Pack</button>
-    <span class="cal-note" id="cal-pack-status">Human pack not checked.</span>
-  </div>
+  <div class="cal-row"><button class="cal-btn main" id="cal-human">Save Current as Known Human</button><button class="cal-btn" id="cal-ai">Save Current as AI Raw</button><button class="cal-btn" id="cal-mastered">Save Current as AI Mastered</button><button class="cal-btn" id="cal-clear">Clear Benchmarks</button></div>
+  <div class="cal-row"><button class="cal-btn main" id="cal-ai-files">Select AI Raw Files</button><button class="cal-btn" id="cal-mastered-files">Select AI Mastered Files</button><span class="cal-note" id="cal-ai-status">No AI batch running.</span></div>
+  <div class="cal-row"><button class="cal-btn main" id="cal-download-human">Download 5 CC0 Human References</button><button class="cal-btn" id="cal-run-human">Run Human Pack</button><span class="cal-note" id="cal-pack-status">Human pack not checked.</span></div>
   <div class="cal-progress"><b>Benchmark Job Status</b><span id="cal-job-status">IDLE</span><div id="cal-progress-text" class="cal-note">No active job.</div><div id="cal-log" class="cal-log"></div></div>
-  <div class="cal-note" style="margin-top:8px">Use tracks whose origin you actually know. A mastered AI track is still labeled AI for detector calibration; mastering quality and authorship are separate questions.</div>
+  <div class="cal-note" style="margin-top:8px">Calibration now measures Human-vs-AI separation. AI-mastered files are still labeled AI for authorship calibration.</div>
   <div class="cal-list" id="cal-list"></div>`;
   document.body.appendChild(root);
-  const $=s=>root.querySelector(s);
-  let rows=loadRows();
-  let activeJob=null;
-  const jobButtons=()=>['#cal-ai-files','#cal-mastered-files','#cal-download-human','#cal-run-human'].map(s=>$(s)).filter(Boolean);
-  function stamp(){return new Date().toLocaleTimeString();}
-  function log(msg,type='info'){const el=$('#cal-log');if(!el)return;const row=document.createElement('div');row.className=type==='error'?'err':type==='ok'?'ok':'';row.textContent='['+stamp()+'] '+msg;el.appendChild(row);el.scrollTop=el.scrollHeight;}
-  function progress(msg){const el=$('#cal-progress-text');if(el)el.textContent=msg;}
-  function setJob(name){activeJob=name;jobButtons().forEach(b=>b.disabled=!!name);root.dataset.busy=name||'';const el=$('#cal-job-status');if(el)el.textContent='RUNNING: '+name;progress('Starting '+name+'…');log('START '+name);}
-  function clearJob(finalText='IDLE'){const name=activeJob;activeJob=null;jobButtons().forEach(b=>b.disabled=false);root.dataset.busy='';const el=$('#cal-job-status');if(el)el.textContent=finalText; if(name)log(finalText+' '+name,finalText==='DONE'?'ok':'info');}
-  function busyMessage(){return activeJob?('Another benchmark is still running: '+activeJob+'. Wait until it finishes.'):null;}
+  const $=s=>root.querySelector(s); let rows=loadRows(),activeJob=null;
+  const buttons=()=>['#cal-ai-files','#cal-mastered-files','#cal-download-human','#cal-run-human'].map(s=>$(s)).filter(Boolean);
+  const stamp=()=>new Date().toLocaleTimeString();
+  function log(msg,type='info'){const e=document.createElement('div');e.className=type==='error'?'err':type==='ok'?'ok':'';e.textContent='['+stamp()+'] '+msg;$('#cal-log').appendChild(e);$('#cal-log').scrollTop=$('#cal-log').scrollHeight}
+  function progress(msg){$('#cal-progress-text').textContent=msg}
+  function setJob(name){activeJob=name;buttons().forEach(b=>b.disabled=true);$('#cal-job-status').textContent='RUNNING: '+name;progress('Starting '+name+'…');log('START '+name)}
+  function clearJob(state='IDLE'){const name=activeJob;activeJob=null;buttons().forEach(b=>b.disabled=false);$('#cal-job-status').textContent=state;if(name)log(state+' '+name,state==='DONE'?'ok':'info')}
+  function busy(){return activeJob?('Another benchmark is still running: '+activeJob):null}
   function redraw(){
-    const m=metrics(rows);
-    $('#cal-n').textContent=String(m.count);
-    for(const [k,i] of [['d1','1'],['d2','2'],['d3','3']]){
-      $('#cal-w'+i).textContent=(m.weights[k]*100).toFixed(1)+'%';
-      $('#cal-e'+i).textContent='MAE '+(m.mae[k]==null?'—':m.mae[k].toFixed(1));
-    }
-    localStorage.setItem('hd_calibration_weights_v22',JSON.stringify(m.weights));
-    window.__hdCalibrationWeights=m.weights;
-    $('#cal-list').innerHTML=rows.length?rows.slice().reverse().map((r,idx)=>`<div class="cal-item"><span>${r.name||'reference'}</span><span>${r.label}</span><span>D1 ${fmt(r.d1)}</span><span>D2 ${fmt(r.d2)}</span><span>D3 ${fmt(r.d3)}</span><button data-i="${rows.length-1-idx}" class="cal-btn">×</button></div>`).join(''):'<div class="cal-note">No benchmark rows yet. Run the 3-detector check on a known reference, then save its label here.</div>';
-    root.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{rows.splice(Number(b.dataset.i),1);saveRows(rows);redraw();});
+    const m=metrics(rows),human=rows.filter(isHuman).length,ai=rows.filter(isAI).length;
+    $('#cal-n').textContent=String(m.count);$('#cal-balance').textContent=`Human ${human} • AI ${ai}`;
+    $('#cal-d1').textContent='Threshold '+fmt(m.d1.threshold)+'%';$('#cal-d1m').textContent=`BA ${Number.isFinite(m.d1.balancedAccuracy)?(m.d1.balancedAccuracy*100).toFixed(0)+'%':'—'} • gap ${fmt(m.d1.gap)} • weight ${(m.weights.d1*100).toFixed(0)}%`;
+    $('#cal-d2').textContent='Threshold '+fmt(m.d2.threshold)+'%';$('#cal-d2m').textContent=`BA ${Number.isFinite(m.d2.balancedAccuracy)?(m.d2.balancedAccuracy*100).toFixed(0)+'%':'—'} • gap ${fmt(m.d2.gap)} • weight ${(m.weights.d2*100).toFixed(0)}%`;
+    $('#cal-list').innerHTML=rows.length?rows.slice().reverse().map((r,idx)=>`<div class="cal-item"><span>${r.name||'reference'}</span><span>${r.label}</span><span>D1 ${fmt(r.d1)}%</span><span>D2 ${fmt(r.d2)}%</span><button data-i="${rows.length-1-idx}" class="cal-btn">×</button></div>`).join(''):'<div class="cal-note">No benchmarks yet.</div>';
+    root.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{rows.splice(Number(b.dataset.i),1);saveRows(rows);redraw()});
   }
-  function capture(label){
-    const e=window.__ensembleLatest;
-    if(!e||![e.d1,e.d2,e.d3].every(Number.isFinite)){alert('Run 3-DETECTOR CHECK first so D1/D2/D3 all have scores.');return;}
-    const name=window.__hdCurrentTrackName||'Current track';
-    rows.push({ts:Date.now(),name,label,d1:e.d1,d2:e.d2,d3:e.d3});
-    saveRows(rows);redraw();
-  }
-
+  function capture(label){const e=window.__ensembleLatest;if(!e||![e.d1,e.d2].every(Number.isFinite)){alert('Run Deep Check first so D1 and D2 have scores.');return}rows.push({ts:Date.now(),name:window.__hdCurrentTrackName||'Current track',label,d1:e.d1,d2:e.d2});saveRows(rows);redraw()}
   async function runSelectedFiles(label){
-    if(activeJob){$('#cal-ai-status').textContent=busyMessage();return;}
-    const picker=await window.electronAPI?.selectBenchmarkAudioFiles?.();
-    const paths=picker?.paths||[];
-    if(!paths.length)return;
-    const statusEl=$('#cal-ai-status');
+    if(activeJob){$('#cal-ai-status').textContent=busy();return}
+    const picker=await window.electronAPI?.selectBenchmarkAudioFiles?.(),paths=picker?.paths||[];if(!paths.length)return;
     setJob(label==='ai_raw'?'AI Raw batch':'AI Mastered batch');
-    try{
-      for(let i=0;i<paths.length;i++){
-        const path=paths[i];
-        const name=(path.split(/[/\\]/).pop()||'AI reference');
-        statusEl.textContent=`File ${i+1}/${paths.length}: D1 ${name}`; progress(`File ${i+1}/${paths.length} • D1 Local • ${name}`); log(`File ${i+1}/${paths.length} D1 ${name}`);
-        const d1=await localScoreForPath(path);
-        statusEl.textContent=`File ${i+1}/${paths.length}: D2 ${name}`; progress(`File ${i+1}/${paths.length} • D2 MS-CLAP • ${name}`); log(`File ${i+1}/${paths.length} D2 ${name}`);
-        const r2=await window.electronAPI?.runOpenDetector?.(path);
-        const d2=r2?.success?humanProbFromExternal(r2):null;
-        statusEl.textContent=`File ${i+1}/${paths.length}: D3 ${name}`; progress(`File ${i+1}/${paths.length} • D3 lcros CLAP • ${name}`); log(`File ${i+1}/${paths.length} D3 ${name}`);
-        const r3=await window.electronAPI?.runLcrosDetector?.(path);
-        const d3=r3?.success?humanProbFromExternal(r3):null;
-        if([d1,d2,d3].every(Number.isFinite)){
-          rows.push({ts:Date.now(),name,label,d1,d2,d3,source:'manual-ai-batch'});
-          saveRows(rows);redraw();
-        }
-      }
-      statusEl.textContent=`AI batch complete: ${paths.length} file(s) processed.`; progress(`Complete • ${paths.length}/${paths.length} files`); log(`AI batch complete: ${paths.length} files`,'ok');
-    }catch(e){
-      statusEl.textContent='AI batch failed: '+e.message; progress('ERROR: '+e.message); log('ERROR '+e.message,'error');
-    }finally{
-      clearJob(statusEl.textContent.startsWith('AI batch complete')?'DONE':'IDLE');
-    }
-  }
-
-  $('#cal-human').onclick=()=>capture('human');
-  $('#cal-ai').onclick=()=>capture('ai_raw');
-  $('#cal-mastered').onclick=()=>capture('ai_mastered');
-  $('#cal-ai-files').onclick=()=>runSelectedFiles('ai_raw');
-  $('#cal-mastered-files').onclick=()=>runSelectedFiles('ai_mastered');
-  $('#cal-clear').onclick=()=>{if(confirm('Clear all detector calibration benchmarks?')){rows=[];saveRows(rows);redraw();}};
-  $('#cal-download-human').onclick=async()=>{
-    if(activeJob){$('#cal-pack-status').textContent=busyMessage();return;}
-    setJob('Human pack download');
-    try{
-      $('#cal-pack-status').textContent='Downloading CC0 reference pack…'; progress('Downloading 5 CC0 human references…'); log('Downloading CC0 human reference pack');
-      const r=await window.electronAPI?.setupHumanBenchmarkPack?.();
-      if(!r?.success)throw new Error(r?.error||'Benchmark download failed');
-      window.__hdHumanBenchmarkPack=r.entries||[];
-      $('#cal-pack-status').textContent=`${(r.entries||[]).length} human references ready.`; progress(`${(r.entries||[]).length} human references ready`); log('Human reference download complete','ok');
-    }catch(e){$('#cal-pack-status').textContent='Download failed: '+e.message;progress('ERROR: '+e.message);log('ERROR '+e.message,'error');}
-    finally{clearJob($('#cal-pack-status').textContent.includes('ready')?'DONE':'IDLE');}
-  };
-  $('#cal-run-human').onclick=async()=>{
-    if(activeJob){$('#cal-pack-status').textContent=busyMessage();return;}
-    setJob('Human Pack');
-    try{
-      let entries=window.__hdHumanBenchmarkPack;
-      if(!entries?.length){
-        const r=await window.electronAPI?.setupHumanBenchmarkPack?.();
-        if(!r?.success)throw new Error(r?.error||'Benchmark pack unavailable');
-        entries=r.entries||[];
-        window.__hdHumanBenchmarkPack=entries;
-      }
-      if(!entries.length)throw new Error('No benchmark files found');
-      rows=rows.filter(x=>x.source!=='cc0-human-pack-v1');
-      saveRows(rows);redraw();
-      for(let i=0;i<entries.length;i++){
-        const e=entries[i];
-        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D1 ${e.name}`; progress(`Human ${i+1}/${entries.length} • D1 Local • ${e.name}`); log(`Human ${i+1}/${entries.length} D1 ${e.name}`);
-        const d1=await localScoreForPath(e.path);
-        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D2 ${e.name}`; progress(`Human ${i+1}/${entries.length} • D2 MS-CLAP • ${e.name}`); log(`Human ${i+1}/${entries.length} D2 ${e.name}`);
-        const r2=await window.electronAPI?.runOpenDetector?.(e.path);
-        const d2=r2?.success?humanProbFromExternal(r2):null;
-        $('#cal-pack-status').textContent=`Benchmark ${i+1}/${entries.length}: D3 ${e.name}`; progress(`Human ${i+1}/${entries.length} • D3 lcros CLAP • ${e.name}`); log(`Human ${i+1}/${entries.length} D3 ${e.name}`);
-        const r3=await window.electronAPI?.runLcrosDetector?.(e.path);
-        const d3=r3?.success?humanProbFromExternal(r3):null;
-        if([d1,d2,d3].every(Number.isFinite)){
-          rows.push({ts:Date.now(),name:e.name,label:'human',d1,d2,d3,source:'cc0-human-pack-v1',license:'CC0-1.0'});
-          saveRows(rows);redraw();
-        }
-      }
-      $('#cal-pack-status').textContent=`Human pack complete: ${rows.filter(x=>x.source==='cc0-human-pack-v1').length}/${entries.length} scored.`; progress(`Complete • ${entries.length}/${entries.length} human references`); log('Human benchmark complete','ok');
-    }catch(e){$('#cal-pack-status').textContent='Benchmark failed: '+e.message;progress('ERROR: '+e.message);log('ERROR '+e.message,'error');}
-    finally{clearJob($('#cal-pack-status').textContent.startsWith('Human pack complete')?'DONE':'IDLE');}
-  };
-  toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';redraw();};
-  $('.cal-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};
-  redraw();
-  return{root,toggle,metrics:()=>metrics(rows)};
+    try{for(let i=0;i<paths.length;i++){const path=paths[i],name=path.split(/[/\\]/).pop()||'AI reference';progress(`File ${i+1}/${paths.length} • D1 • ${name}`);log(`File ${i+1}/${paths.length} D1 ${name}`);const d1=await localScoreForPath(path);progress(`File ${i+1}/${paths.length} • D2 • ${name}`);log(`File ${i+1}/${paths.length} D2 ${name}`);const r2=await window.electronAPI?.runOpenDetector?.(path);const d2=r2?.success?humanProbFromExternal(r2):null;if([d1,d2].every(Number.isFinite)){rows.push({ts:Date.now(),name,label,d1,d2,source:'manual-ai-batch'});saveRows(rows);redraw()}}$('#cal-ai-status').textContent=`AI batch complete: ${paths.length} file(s).`;progress('Complete');clearJob('DONE')}catch(e){$('#cal-ai-status').textContent='ERROR: '+e.message;progress('ERROR: '+e.message);log(e.message,'error');clearJob('ERROR')}}
+  $('#cal-human').onclick=()=>capture('human');$('#cal-ai').onclick=()=>capture('ai_raw');$('#cal-mastered').onclick=()=>capture('ai_mastered');$('#cal-ai-files').onclick=()=>runSelectedFiles('ai_raw');$('#cal-mastered-files').onclick=()=>runSelectedFiles('ai_mastered');
+  $('#cal-clear').onclick=()=>{if(confirm('Clear all calibration benchmarks?')){rows=[];saveRows(rows);redraw()}};
+  $('#cal-download-human').onclick=async()=>{if(activeJob){$('#cal-pack-status').textContent=busy();return}setJob('Human pack download');try{progress('Downloading 5 CC0 human references…');const r=await window.electronAPI?.setupHumanBenchmarkPack?.();if(!r?.success)throw new Error(r?.error||'Download failed');window.__hdHumanBenchmarkPack=r.entries||[];$('#cal-pack-status').textContent=`${(r.entries||[]).length} human references ready.`;progress('Human references ready');clearJob('DONE')}catch(e){$('#cal-pack-status').textContent='ERROR: '+e.message;log(e.message,'error');clearJob('ERROR')}};
+  $('#cal-run-human').onclick=async()=>{if(activeJob){$('#cal-pack-status').textContent=busy();return}setJob('Human Pack');try{let entries=window.__hdHumanBenchmarkPack;if(!entries?.length){const r=await window.electronAPI?.setupHumanBenchmarkPack?.();if(!r?.success)throw new Error(r?.error||'Pack unavailable');entries=r.entries||[];window.__hdHumanBenchmarkPack=entries}rows=rows.filter(x=>x.source!=='cc0-human-pack-v1');saveRows(rows);redraw();for(let i=0;i<entries.length;i++){const e=entries[i];progress(`Human ${i+1}/${entries.length} • D1 • ${e.name}`);log(`Human ${i+1}/${entries.length} D1 ${e.name}`);const d1=await localScoreForPath(e.path);progress(`Human ${i+1}/${entries.length} • D2 • ${e.name}`);log(`Human ${i+1}/${entries.length} D2 ${e.name}`);const r2=await window.electronAPI?.runOpenDetector?.(e.path);const d2=r2?.success?humanProbFromExternal(r2):null;if([d1,d2].every(Number.isFinite)){rows.push({ts:Date.now(),name:e.name,label:'human',d1,d2,source:'cc0-human-pack-v1',license:'CC0-1.0'});saveRows(rows);redraw()}}$('#cal-pack-status').textContent=`Human pack complete: ${entries.length}/${entries.length} scored.`;progress('Human pack complete');clearJob('DONE')}catch(e){$('#cal-pack-status').textContent='ERROR: '+e.message;log(e.message,'error');clearJob('ERROR')}};
+  toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';redraw()};$('.cal-close').onclick=()=>{root.style.display='none';toggle.style.display='block'};redraw();return{root,toggle,metrics:()=>metrics(rows)};
 }

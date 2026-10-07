@@ -46,7 +46,7 @@ export function mountCalibrationPanel(){
     <div class="cal-card"><small>D1 Fast</small><b id="cal-d1">Threshold —</b><small id="cal-d1m">Balanced accuracy —</small></div>
     <div class="cal-card"><small>D2 Deep</small><b id="cal-d2">Threshold —</b><small id="cal-d2m">Balanced accuracy —</small></div>
   </div>
-  <div class="cal-row"><button class="cal-btn main" id="cal-human">Save Current as Known Human</button><button class="cal-btn" id="cal-ai">Save Current as AI Raw</button><button class="cal-btn" id="cal-mastered">Save Current as AI Mastered</button><button class="cal-btn" id="cal-clear">Clear Benchmarks</button></div>
+  <div class="cal-row"><button class="cal-btn main" id="cal-human">Save Current as Known Human</button><button class="cal-btn" id="cal-ai">Save Current as AI Raw</button><button class="cal-btn" id="cal-mastered">Save Current as AI Mastered</button><button class="cal-btn" id="cal-clear">Clear Benchmarks</button><button class="cal-btn" id="cal-clear-project">Clear Previous Project</button></div>
   <div class="cal-row"><button class="cal-btn main" id="cal-ai-files">Select AI Raw Files</button><button class="cal-btn" id="cal-mastered-files">Select AI Mastered Files</button><span class="cal-note" id="cal-ai-status">No AI batch running.</span></div>
   <div class="cal-row"><button class="cal-btn main" id="cal-download-human">Download 5 CC0 Human References</button><button class="cal-btn" id="cal-run-human">Run Human Pack</button><span class="cal-note" id="cal-pack-status">Human pack not checked.</span></div>
   <div class="cal-progress"><b>Benchmark Job Status</b><span id="cal-job-status">IDLE</span><div id="cal-progress-text" class="cal-note">No active job.</div><div id="cal-log" class="cal-log"></div></div>
@@ -77,6 +77,25 @@ export function mountCalibrationPanel(){
     try{for(let i=0;i<paths.length;i++){const path=paths[i],name=path.split(/[/\\]/).pop()||'AI reference';progress(`File ${i+1}/${paths.length} • D1 • ${name}`);log(`File ${i+1}/${paths.length} D1 ${name}`);const d1=await localScoreForPath(path);progress(`File ${i+1}/${paths.length} • D2 • ${name}`);log(`File ${i+1}/${paths.length} D2 ${name}`);const r2=await window.electronAPI?.runOpenDetector?.(path);const d2=r2?.success?humanProbFromExternal(r2):null;if([d1,d2].every(Number.isFinite)){rows.push({ts:Date.now(),name,label,d1,d2,source:'manual-ai-batch'});saveRows(rows);redraw()}}$('#cal-ai-status').textContent=`AI batch complete: ${paths.length} file(s).`;progress('Complete');clearJob('DONE')}catch(e){$('#cal-ai-status').textContent='ERROR: '+e.message;progress('ERROR: '+e.message);log(e.message,'error');clearJob('ERROR')}}
   $('#cal-human').onclick=()=>capture('human');$('#cal-ai').onclick=()=>capture('ai_raw');$('#cal-mastered').onclick=()=>capture('ai_mastered');$('#cal-ai-files').onclick=()=>runSelectedFiles('ai_raw');$('#cal-mastered-files').onclick=()=>runSelectedFiles('ai_mastered');
   $('#cal-clear').onclick=()=>{if(confirm('Clear all calibration benchmarks?')){rows=[];saveRows(rows);redraw()}};
+  $('#cal-clear-project').onclick=async()=>{
+    if(activeJob){progress('Cannot clear project while '+activeJob+' is running.');return;}
+    if(!confirm('Clear previous project data and caches? D2 detector engine will be kept. The app will reload afterward.'))return;
+    setJob('Clear Previous Project');
+    try{
+      progress('Clearing renderer project state…');log('Clearing calibration/local project state');
+      const keys=[];
+      for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&(k.startsWith('hd_')||k.startsWith('humanDetect')||k.startsWith('mastering_')))keys.push(k);}
+      keys.forEach(k=>localStorage.removeItem(k));
+      sessionStorage.clear();
+      rows=[];
+      saveRows(rows);
+      progress('Clearing Electron project cache…');log('Requesting main-process cache cleanup');
+      const r=await window.electronAPI?.clearPreviousProject?.();
+      if(!r?.success)throw new Error(r?.error||'Project cleanup failed');
+      log('Project cleanup complete','ok');progress('DONE • Previous project cleared. Reloading…');clearJob('DONE');
+      setTimeout(()=>location.reload(),700);
+    }catch(e){log('ERROR '+e.message,'error');progress('ERROR: '+e.message);clearJob('ERROR');}
+  };
   $('#cal-download-human').onclick=async()=>{if(activeJob){$('#cal-pack-status').textContent=busy();return}setJob('Human pack download');try{progress('Downloading 5 CC0 human references…');const r=await window.electronAPI?.setupHumanBenchmarkPack?.();if(!r?.success)throw new Error(r?.error||'Download failed');window.__hdHumanBenchmarkPack=r.entries||[];$('#cal-pack-status').textContent=`${(r.entries||[]).length} human references ready.`;progress('Human references ready');clearJob('DONE')}catch(e){$('#cal-pack-status').textContent='ERROR: '+e.message;log(e.message,'error');clearJob('ERROR')}};
   $('#cal-run-human').onclick=async()=>{if(activeJob){$('#cal-pack-status').textContent=busy();return}setJob('Human Pack');try{let entries=window.__hdHumanBenchmarkPack;if(!entries?.length){const r=await window.electronAPI?.setupHumanBenchmarkPack?.();if(!r?.success)throw new Error(r?.error||'Pack unavailable');entries=r.entries||[];window.__hdHumanBenchmarkPack=entries}rows=rows.filter(x=>x.source!=='cc0-human-pack-v1');saveRows(rows);redraw();for(let i=0;i<entries.length;i++){const e=entries[i];progress(`Human ${i+1}/${entries.length} • D1 • ${e.name}`);log(`Human ${i+1}/${entries.length} D1 ${e.name}`);const d1=await localScoreForPath(e.path);progress(`Human ${i+1}/${entries.length} • D2 • ${e.name}`);log(`Human ${i+1}/${entries.length} D2 ${e.name}`);const r2=await window.electronAPI?.runOpenDetector?.(e.path);const d2=r2?.success?humanProbFromExternal(r2):null;if([d1,d2].every(Number.isFinite)){rows.push({ts:Date.now(),name:e.name,label:'human',d1,d2,source:'cc0-human-pack-v1',license:'CC0-1.0'});saveRows(rows);redraw()}}$('#cal-pack-status').textContent=`Human pack complete: ${entries.length}/${entries.length} scored.`;progress('Human pack complete');clearJob('DONE')}catch(e){$('#cal-pack-status').textContent='ERROR: '+e.message;log(e.message,'error');clearJob('ERROR')}};
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';redraw()};$('.cal-close').onclick=()=>{root.style.display='none';toggle.style.display='block'};redraw();return{root,toggle,metrics:()=>metrics(rows)};

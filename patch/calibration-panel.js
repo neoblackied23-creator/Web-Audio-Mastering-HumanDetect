@@ -58,6 +58,11 @@ export function mountCalibrationPanel(){
     <button class="cal-btn" id="cal-clear">Clear Benchmarks</button>
   </div>
   <div class="cal-row">
+    <button class="cal-btn main" id="cal-ai-files">Select AI Raw Files</button>
+    <button class="cal-btn" id="cal-mastered-files">Select AI Mastered Files</button>
+    <span class="cal-note" id="cal-ai-status">No AI batch running.</span>
+  </div>
+  <div class="cal-row">
     <button class="cal-btn main" id="cal-download-human">Download 5 CC0 Human References</button>
     <button class="cal-btn" id="cal-run-human">Run Human Pack</button>
     <span class="cal-note" id="cal-pack-status">Human pack not checked.</span>
@@ -86,9 +91,44 @@ export function mountCalibrationPanel(){
     rows.push({ts:Date.now(),name,label,d1:e.d1,d2:e.d2,d3:e.d3});
     saveRows(rows);redraw();
   }
+
+  async function runSelectedFiles(label){
+    const picker=await window.electronAPI?.selectBenchmarkAudioFiles?.();
+    const paths=picker?.paths||[];
+    if(!paths.length)return;
+    const statusEl=$('#cal-ai-status');
+    const rawBtn=$('#cal-ai-files'), masteredBtn=$('#cal-mastered-files');
+    rawBtn.disabled=true; masteredBtn.disabled=true;
+    try{
+      for(let i=0;i<paths.length;i++){
+        const path=paths[i];
+        const name=(path.split(/[/\\]/).pop()||'AI reference');
+        statusEl.textContent=`File ${i+1}/${paths.length}: D1 ${name}`;
+        const d1=await localScoreForPath(path);
+        statusEl.textContent=`File ${i+1}/${paths.length}: D2 ${name}`;
+        const r2=await window.electronAPI?.runOpenDetector?.(path);
+        const d2=r2?.success?humanProbFromExternal(r2):null;
+        statusEl.textContent=`File ${i+1}/${paths.length}: D3 ${name}`;
+        const r3=await window.electronAPI?.runLcrosDetector?.(path);
+        const d3=r3?.success?humanProbFromExternal(r3):null;
+        if([d1,d2,d3].every(Number.isFinite)){
+          rows.push({ts:Date.now(),name,label,d1,d2,d3,source:'manual-ai-batch'});
+          saveRows(rows);redraw();
+        }
+      }
+      statusEl.textContent=`AI batch complete: ${paths.length} file(s) processed.`;
+    }catch(e){
+      statusEl.textContent='AI batch failed: '+e.message;
+    }finally{
+      rawBtn.disabled=false; masteredBtn.disabled=false;
+    }
+  }
+
   $('#cal-human').onclick=()=>capture('human');
   $('#cal-ai').onclick=()=>capture('ai_raw');
   $('#cal-mastered').onclick=()=>capture('ai_mastered');
+  $('#cal-ai-files').onclick=()=>runSelectedFiles('ai_raw');
+  $('#cal-mastered-files').onclick=()=>runSelectedFiles('ai_mastered');
   $('#cal-clear').onclick=()=>{if(confirm('Clear all detector calibration benchmarks?')){rows=[];saveRows(rows);redraw();}};
   $('#cal-download-human').onclick=async()=>{
     const b=$('#cal-download-human');b.disabled=true;

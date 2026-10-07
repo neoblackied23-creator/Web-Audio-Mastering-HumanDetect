@@ -40,7 +40,7 @@ async function localScoreForPath(path){
 }
 export function mountCalibrationPanel(){
   const style=document.createElement('style');
-  style.textContent=`.cal-toggle{position:fixed;left:18px;bottom:114px;z-index:99994;border-radius:999px;padding:10px 14px;border:1px solid #555;background:#24242a;color:#fff}.cal-panel{position:fixed;left:540px;bottom:18px;width:min(560px,calc(100vw - 36px));max-height:calc(100vh - 90px);overflow:auto;z-index:100002;padding:14px;border:1px solid #444;border-radius:14px;background:rgba(20,21,25,.98);box-shadow:0 18px 50px #0009;color:#f2f2f2;font-family:system-ui}.cal-head{display:flex;justify-content:space-between}.cal-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:9px}.cal-btn{border:1px solid #ffffff2b;border-radius:8px;padding:8px 10px;background:#ffffff14;color:inherit;cursor:pointer}.cal-btn.main{background:#b7e1ff;color:#101318;font-weight:700}.cal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}.cal-card{background:#ffffff0f;padding:9px;border-radius:9px}.cal-card small{display:block;opacity:.65}.cal-card b{font-size:16px}.cal-list{margin-top:10px;font-size:12px}.cal-item{display:grid;grid-template-columns:1.3fr .7fr .7fr .7fr .7fr auto;gap:5px;padding:6px 0;border-bottom:1px solid #ffffff14}.cal-note{font-size:11px;opacity:.7;line-height:1.4}.cal-close{background:none;border:0;color:inherit;font-size:18px}@media(max-width:1100px){.cal-panel{left:18px}.cal-grid{grid-template-columns:1fr 1fr}.cal-item{grid-template-columns:1fr 1fr}.cal-item span:first-child{grid-column:1/-1}}`;
+  style.textContent=`.cal-toggle{position:fixed;left:18px;bottom:114px;z-index:99994;border-radius:999px;padding:10px 14px;border:1px solid #555;background:#24242a;color:#fff}.cal-panel{position:fixed;left:540px;bottom:18px;width:min(560px,calc(100vw - 36px));max-height:calc(100vh - 90px);overflow:auto;z-index:100002;padding:14px;border:1px solid #444;border-radius:14px;background:rgba(20,21,25,.98);box-shadow:0 18px 50px #0009;color:#f2f2f2;font-family:system-ui}.cal-head{display:flex;justify-content:space-between}.cal-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:9px}.cal-btn{border:1px solid #ffffff2b;border-radius:8px;padding:8px 10px;background:#ffffff14;color:inherit;cursor:pointer}.cal-btn.main{background:#b7e1ff;color:#101318;font-weight:700}.cal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}.cal-card{background:#ffffff0f;padding:9px;border-radius:9px}.cal-card small{display:block;opacity:.65}.cal-card b{font-size:16px}.cal-list{margin-top:10px;font-size:12px}.cal-item{display:grid;grid-template-columns:1.3fr .7fr .7fr .7fr .7fr auto;gap:5px;padding:6px 0;border-bottom:1px solid #ffffff14}.cal-note{font-size:11px;opacity:.7;line-height:1.4}.cal-close{background:none;border:0;color:inherit;font-size:18px}.cal-progress{margin-top:10px;padding:9px;border:1px solid #ffffff22;border-radius:8px;background:#ffffff08;font-size:12px}.cal-progress b{display:block;margin-bottom:3px}.cal-btn:disabled{opacity:.45;cursor:not-allowed}@media(max-width:1100px){.cal-panel{left:18px}.cal-grid{grid-template-columns:1fr 1fr}.cal-item{grid-template-columns:1fr 1fr}.cal-item span:first-child{grid-column:1/-1}}`;
   document.head.appendChild(style);
   const toggle=document.createElement('button');toggle.className='cal-toggle';toggle.textContent='Calibration';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='cal-panel';root.style.display='none';
@@ -67,11 +67,17 @@ export function mountCalibrationPanel(){
     <button class="cal-btn" id="cal-run-human">Run Human Pack</button>
     <span class="cal-note" id="cal-pack-status">Human pack not checked.</span>
   </div>
+  <div class="cal-progress"><b>Benchmark Job Status</b><span id="cal-job-status">Idle</span></div>
   <div class="cal-note" style="margin-top:8px">Use tracks whose origin you actually know. A mastered AI track is still labeled AI for detector calibration; mastering quality and authorship are separate questions.</div>
   <div class="cal-list" id="cal-list"></div>`;
   document.body.appendChild(root);
   const $=s=>root.querySelector(s);
   let rows=loadRows();
+  let activeJob=null;
+  const jobButtons=()=>['#cal-ai-files','#cal-mastered-files','#cal-download-human','#cal-run-human'].map(s=>$(s)).filter(Boolean);
+  function setJob(name){activeJob=name;jobButtons().forEach(b=>b.disabled=!!name);root.dataset.busy=name||'';const el=$('#cal-job-status');if(el)el.textContent='RUNNING: '+name;}
+  function clearJob(){activeJob=null;jobButtons().forEach(b=>b.disabled=false);root.dataset.busy='';const el=$('#cal-job-status');if(el)el.textContent='Idle';}
+  function busyMessage(){return activeJob?('Another benchmark is still running: '+activeJob+'. Wait until it finishes.'):null;}
   function redraw(){
     const m=metrics(rows);
     $('#cal-n').textContent=String(m.count);
@@ -93,12 +99,12 @@ export function mountCalibrationPanel(){
   }
 
   async function runSelectedFiles(label){
+    if(activeJob){$('#cal-ai-status').textContent=busyMessage();return;}
     const picker=await window.electronAPI?.selectBenchmarkAudioFiles?.();
     const paths=picker?.paths||[];
     if(!paths.length)return;
     const statusEl=$('#cal-ai-status');
-    const rawBtn=$('#cal-ai-files'), masteredBtn=$('#cal-mastered-files');
-    rawBtn.disabled=true; masteredBtn.disabled=true;
+    setJob(label==='ai_raw'?'AI Raw batch':'AI Mastered batch');
     try{
       for(let i=0;i<paths.length;i++){
         const path=paths[i];
@@ -120,7 +126,7 @@ export function mountCalibrationPanel(){
     }catch(e){
       statusEl.textContent='AI batch failed: '+e.message;
     }finally{
-      rawBtn.disabled=false; masteredBtn.disabled=false;
+      clearJob();
     }
   }
 
@@ -131,7 +137,8 @@ export function mountCalibrationPanel(){
   $('#cal-mastered-files').onclick=()=>runSelectedFiles('ai_mastered');
   $('#cal-clear').onclick=()=>{if(confirm('Clear all detector calibration benchmarks?')){rows=[];saveRows(rows);redraw();}};
   $('#cal-download-human').onclick=async()=>{
-    const b=$('#cal-download-human');b.disabled=true;
+    if(activeJob){$('#cal-pack-status').textContent=busyMessage();return;}
+    setJob('Human pack download');
     try{
       $('#cal-pack-status').textContent='Downloading CC0 reference pack…';
       const r=await window.electronAPI?.setupHumanBenchmarkPack?.();
@@ -139,10 +146,11 @@ export function mountCalibrationPanel(){
       window.__hdHumanBenchmarkPack=r.entries||[];
       $('#cal-pack-status').textContent=`${(r.entries||[]).length} human references ready.`;
     }catch(e){$('#cal-pack-status').textContent='Download failed: '+e.message;}
-    finally{b.disabled=false;}
+    finally{clearJob();}
   };
   $('#cal-run-human').onclick=async()=>{
-    const b=$('#cal-run-human');b.disabled=true;
+    if(activeJob){$('#cal-pack-status').textContent=busyMessage();return;}
+    setJob('Human Pack');
     try{
       let entries=window.__hdHumanBenchmarkPack;
       if(!entries?.length){
@@ -171,7 +179,7 @@ export function mountCalibrationPanel(){
       }
       $('#cal-pack-status').textContent=`Human pack complete: ${rows.filter(x=>x.source==='cc0-human-pack-v1').length}/${entries.length} scored.`;
     }catch(e){$('#cal-pack-status').textContent='Benchmark failed: '+e.message;}
-    finally{b.disabled=false;}
+    finally{clearJob();}
   };
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';redraw();};
   $('.cal-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};

@@ -61,6 +61,7 @@ jobs:
           Copy-Item overlay/patch/patch_v232.py app/patch_v232.py
           Copy-Item overlay/patch/patch_v233.py app/patch_v233.py
           Copy-Item overlay/patch/patch_v240.py app/patch_v240.py
+          Copy-Item overlay/patch/patch_v241.py app/patch_v241.py
 
       - name: Apply integration patches
         working-directory: app
@@ -82,6 +83,7 @@ jobs:
           python patch_v232.py
           python patch_v233.py
           python patch_v240.py
+          python patch_v241.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -107,6 +109,6 @@ jobs:
       - name: Upload portable EXE
         uses: actions/upload-artifact@v4
         with:
-          name: Web-Audio-Mastering-HumanDetect-2.4.0-Windows
+          name: Web-Audio-Mastering-HumanDetect-2.4.1-Windows
           path: app/release/*.exe
           if-no-files-found: error

@@ -6,13 +6,25 @@ function humanProbFromExternal(r){
   if(label==='fake'||label==='ai') return (1-c)*100;
   return null;
 }
+function calibrationWeights(){
+  try{
+    const w=window.__hdCalibrationWeights||JSON.parse(localStorage.getItem('hd_calibration_weights_v22')||'null');
+    if(w&&['d1','d2','d3'].every(k=>Number.isFinite(Number(w[k])))) return {d1:Number(w.d1),d2:Number(w.d2),d3:Number(w.d3)};
+  }catch(_){}
+  return {d1:1/3,d2:1/3,d3:1/3};
+}
 function consensus(values){
-  const v=values.filter(Number.isFinite);
-  if(!v.length) return null;
-  const mean=v.reduce((a,b)=>a+b,0)/v.length;
-  const spread=v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/v.length):25;
-  const confidence=Math.max(0,Math.min(100,100-spread*2))*(v.length/3);
-  return {human:mean,ai:100-mean,confidence,count:v.length,spread};
+  const keys=['d1','d2','d3'];
+  const pairs=keys.map((k,i)=>({k,v:values[i]})).filter(x=>Number.isFinite(x.v));
+  if(!pairs.length) return null;
+  const w=calibrationWeights();
+  const sw=pairs.reduce((s,x)=>s+w[x.k],0)||1;
+  const mean=pairs.reduce((s,x)=>s+x.v*w[x.k],0)/sw;
+  const spread=pairs.length>1?Math.sqrt(pairs.reduce((s,x)=>s+(x.v-mean)**2,0)/pairs.length):25;
+  const agreement=Math.max(0,100-spread*4);
+  const completeness=pairs.length/3;
+  const confidence=agreement*completeness;
+  return {human:mean,ai:100-mean,confidence,count:pairs.length,spread,weights:w};
 }
 export function mountEnsembleDetectorPanel(opts={}){
   const style=document.createElement('style');
@@ -20,7 +32,7 @@ export function mountEnsembleDetectorPanel(opts={}){
   document.head.appendChild(style);
   const toggle=document.createElement('button');toggle.className='ed-toggle';toggle.textContent='3-Detector Ensemble';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='ed-panel';root.style.display='none';
-  root.innerHTML=`<div class="ed-head"><div><b>AI Music Detector Ensemble</b><small>v2.1 • Local DSP + MS-CLAP + CLAP Hierarchical</small></div><button class="ed-close">×</button></div>
+  root.innerHTML=`<div class="ed-head"><div><b>AI Music Detector Ensemble</b><small>v2.2 • Weighted Local DSP + MS-CLAP + CLAP Hierarchical</small></div><button class="ed-close">×</button></div>
   <div class="ed-grid">
     <div class="ed-card"><small>Detector 1 • Local DSP/FP</small><b id="ed-d1">—</b><small id="ed-d1m">Analyze Original first</small></div>
     <div class="ed-card"><small>Detector 2 • MS-CLAP</small><b id="ed-d2">—</b><small id="ed-d2m">offline model</small></div>
@@ -30,12 +42,12 @@ export function mountEnsembleDetectorPanel(opts={}){
   <div class="ed-row"><span>Detector 2:</span><b id="ed-s2" class="warn">checking…</b><button class="ed-btn" id="ed-setup2">Setup D2</button></div>
   <div class="ed-row"><span>Detector 3:</span><b id="ed-s3" class="warn">checking…</b><button class="ed-btn" id="ed-setup3">Setup D3 (~2.35 GB model)</button></div>
   <div class="ed-row"><button class="ed-btn main" id="ed-run">RUN 3-DETECTOR CHECK</button></div>
-  <div class="ed-status" id="ed-status">Scores are independent estimates. Ensemble is an equal-weight consensus, not proof of authorship.</div>`;
+  <div class="ed-status" id="ed-status">Scores are independent estimates. Ensemble uses calibration weights when available; confidence is reduced when detectors disagree.</div>`;
   document.body.appendChild(root);
   const $=s=>root.querySelector(s); let d2=null,d3=null;
   const status=t=>$('#ed-status').textContent=t;
   function refreshLocal(){const r=window.__localHumanDetectLatest;if(r){const h=Number(r.humanScore??r.humanPct);$('#ed-d1').textContent=`${h.toFixed(1)}% Human`;$('#ed-d1m').textContent=`DSP ${r.dspPct}% • FP ${r.fakePct}%`;return h;}$('#ed-d1').textContent='—';return null;}
-  function render(){const p1=refreshLocal(),p2=humanProbFromExternal(d2),p3=humanProbFromExternal(d3);if(Number.isFinite(p2)){ $('#ed-d2').textContent=`${p2.toFixed(1)}% Human`;$('#ed-d2m').textContent=`${String(d2.label).toUpperCase()} • conf ${(Number(d2.confidence)*100).toFixed(0)}%`; }if(Number.isFinite(p3)){ $('#ed-d3').textContent=`${p3.toFixed(1)}% Human`;$('#ed-d3m').textContent=`${String(d3.label).toUpperCase()} • votes ${d3.ai_votes??'—'}/${d3.total_votes??'—'}`; }const c=consensus([p1,p2,p3]);if(c){$('#ed-final').textContent=`${c.human.toFixed(1)}% Human-like`;$('#ed-conf').textContent=`AI-like ${c.ai.toFixed(1)}% • consensus confidence ${c.confidence.toFixed(0)}% • ${c.count}/3 detectors available`;}}
+  function render(){const p1=refreshLocal(),p2=humanProbFromExternal(d2),p3=humanProbFromExternal(d3);window.__ensembleLatest={d1:p1,d2:p2,d3:p3,raw2:d2,raw3:d3};if(Number.isFinite(p2)){ $('#ed-d2').textContent=`${p2.toFixed(1)}% Human`;$('#ed-d2m').textContent=`${String(d2.label).toUpperCase()} • conf ${(Number(d2.confidence)*100).toFixed(0)}%`; }if(Number.isFinite(p3)){ $('#ed-d3').textContent=`${p3.toFixed(1)}% Human`;$('#ed-d3m').textContent=`${String(d3.label).toUpperCase()} • votes ${d3.ai_votes??'—'}/${d3.total_votes??'—'}`; }const c=consensus([p1,p2,p3]);if(c){$('#ed-final').textContent=`${c.human.toFixed(1)}% Human-like`;$('#ed-conf').textContent=`AI-like ${c.ai.toFixed(1)}% • agreement confidence ${c.confidence.toFixed(0)}% • spread ${c.spread.toFixed(1)} • ${c.count}/3 detectors`;window.__ensembleFinal=c;}}
   async function check(){const [s2,s3]=await Promise.all([window.electronAPI?.openDetectorStatus?.(),window.electronAPI?.lcrosDetectorStatus?.()]);$('#ed-s2').textContent=s2?.available?'ready':'not ready';$('#ed-s2').className=s2?.available?'ok':'warn';$('#ed-s3').textContent=s3?.available?'ready':'not ready';$('#ed-s3').className=s3?.available?'ok':'warn';return{s2,s3};}
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';check();render();};root.querySelector('.ed-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};
   $('#ed-setup2').onclick=async()=>{try{status('Setting up Detector 2…');const r=await window.electronAPI?.setupOpenDetector?.();if(!r?.success)throw new Error(r?.error||'D2 setup failed');status('Detector 2 ready.');await check();}catch(e){status(e.message);}};

@@ -38,6 +38,7 @@ jobs:
           Copy-Item overlay/patch/virtual-performance.js app/web/human-detect/virtual-performance.js
           Copy-Item overlay/patch/auto-optimize.js app/web/human-detect/auto-optimize.js
           Copy-Item overlay/patch/stem-engine.js app/web/human-detect/stem-engine.js
+          Copy-Item overlay/patch/stem-lab-panel.js app/web/human-detect/stem-lab-panel.js
           Copy-Item overlay/patch/ai-mastering-style.js app/web/human-detect/ai-mastering-style.js
           Copy-Item overlay/patch/ai-mastering-panel.js app/web/human-detect/ai-mastering-panel.js
           Copy-Item overlay/patch/external-detector-panel.js app/web/human-detect/external-detector-panel.js
@@ -59,6 +60,7 @@ jobs:
           Copy-Item overlay/patch/patch_v231.py app/patch_v231.py
           Copy-Item overlay/patch/patch_v232.py app/patch_v232.py
           Copy-Item overlay/patch/patch_v233.py app/patch_v233.py
+          Copy-Item overlay/patch/patch_v240.py app/patch_v240.py
 
       - name: Apply integration patches
         working-directory: app
@@ -79,6 +81,7 @@ jobs:
           python patch_v231.py
           python patch_v232.py
           python patch_v233.py
+          python patch_v240.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -104,6 +107,6 @@ jobs:
       - name: Upload portable EXE
         uses: actions/upload-artifact@v4
         with:
-          name: Web-Audio-Mastering-HumanDetect-2.3.3-Windows
+          name: Web-Audio-Mastering-HumanDetect-2.4.0-Windows
           path: app/release/*.exe
           if-no-files-found: error

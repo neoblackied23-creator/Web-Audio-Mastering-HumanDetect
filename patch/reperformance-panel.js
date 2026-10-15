@@ -61,6 +61,59 @@ function blend(original,synthetic,amount){
 }
 function score(buf){const r=analyzeAudioBuffer(buf);return Number(r.humanScore??r.humanPct);}
 
+async function decodeAudioFile(path){
+  const bytes=await window.electronAPI?.readFileData?.(path);
+  if(!bytes)throw new Error('Could not read instrument sample: '+path);
+  const u8=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);
+  const ab=u8.buffer.slice(u8.byteOffset,u8.byteOffset+u8.byteLength);
+  const ctx=new AudioContext();
+  try{return await ctx.decodeAudioData(ab);}finally{try{await ctx.close()}catch(_){}}
+}
+async function loadSelectedInstrumentPack(type){
+  const id=localStorage.getItem('hd_instrument_'+type);
+  if(!id)return null;
+  const r=await window.electronAPI?.instrumentManagerList?.();
+  const pack=(r?.packs||[]).find(p=>p.id===id&&p.type===type);
+  return pack||null;
+}
+function synthBassFromSample(ref,notes,sample,rootMidi=36){
+  const out=makeBufferLike(ref),sr=ref.sampleRate,src=sample.getChannelData(0),srcSr=sample.sampleRate;
+  for(const n of notes){
+    const ratio=Math.pow(2,(n.pitch-rootMidi)/12);
+    const st=Math.floor(n.start*sr),en=Math.min(out.length,Math.floor(n.end*sr));
+    const atk=Math.max(1,Math.floor(sr*.01)),rel=Math.max(1,Math.floor(sr*.06));
+    for(let i=st;i<en;i++){
+      const pos=i-st,remain=en-i;
+      const srcPos=pos*srcSr/sr*ratio;
+      let idx=Math.floor(srcPos);
+      if(idx>=src.length){
+        const loopStart=Math.floor(src.length*.18),loopLen=Math.max(1,Math.floor(src.length*.55));
+        idx=loopStart+((idx-loopStart)%loopLen+loopLen)%loopLen;
+      }
+      const next=Math.min(src.length-1,idx+1),frac=srcPos-Math.floor(srcPos);
+      let x=(src[idx]*(1-frac)+src[next]*frac);
+      const env=Math.min(1,pos/atk)*Math.min(1,remain/rel)*n.amp;
+      x*=env;
+      for(let ch=0;ch<out.numberOfChannels;ch++)out.getChannelData(ch)[i]+=x*.72;
+    }
+  }
+  return normalize(out);
+}
+function synthDrumsFromSamples(ref,hits,samples){
+  const out=makeBufferLike(ref),sr=ref.sampleRate;
+  for(const h of hits){
+    const sb=samples[h.type]||samples.snare;if(!sb)continue;
+    const src=sb.getChannelData(0),srcSr=sb.sampleRate,st=Math.floor(h.time*sr);
+    const outLen=Math.min(out.length-st,Math.floor(src.length*sr/srcSr));
+    for(let j=0;j<outLen;j++){
+      const sp=j*srcSr/sr,idx=Math.floor(sp),next=Math.min(src.length-1,idx+1),frac=sp-idx;
+      const x=(src[idx]*(1-frac)+src[next]*frac)*h.amp;
+      for(let ch=0;ch<out.numberOfChannels;ch++)out.getChannelData(ch)[st+j]+=x;
+    }
+  }
+  return normalize(out);
+}
+
 export function mountReperformancePanel(opts={}){
   if(window.__reperfMounted)return;window.__reperfMounted=true;
   const style=document.createElement('style');
@@ -87,8 +140,8 @@ export function mountReperformancePanel(opts={}){
   $('#rp-setup').onclick=async()=>{try{status('RUNNING: setup Basic Pitch engine');const r=await window.electronAPI?.setupReperfEngine?.();if(!r?.success)throw new Error(r?.error||'setup failed');status('DONE: Re-Performance engine ready');await check();}catch(e){status('ERROR: '+e.message);}};
   const labels=()=>{$('#rp-tv').textContent=$('#rp-timing').value+' ms';$('#rp-vv').textContent=$('#rp-velocity').value+'%';$('#rp-bv').textContent=$('#rp-bassblend').value+'%';$('#rp-dv').textContent=$('#rp-drumblend').value+'%';};
   ['#rp-timing','#rp-velocity','#rp-bassblend','#rp-drumblend'].forEach(id=>$(id).addEventListener('input',labels));labels();
-  $('#rp-bass').onclick=async()=>{try{const b=stemBuffers().bass,p=stemPaths().bass;if(!b||!p)throw new Error('Separate stems in Stem Lab first');status('RUNNING: Basic Pitch analyzing bass stem');const r=await window.electronAPI?.analyzeBassNotes?.(p);if(!r?.success)throw new Error(r?.error||'Basic Pitch failed');const notes=humanizeNotes(r.notes,Number($('#rp-timing').value),Number($('#rp-velocity').value));const syn=synthBass(b,notes);bassOut=blend(b,syn,Number($('#rp-bassblend').value)/100);$('#rp-bassinfo').textContent=r.count+' notes detected • virtual bass ready';status('DONE: virtual bass built');}catch(e){status('ERROR: '+e.message);}};
-  $('#rp-drums').onclick=()=>{try{const d=stemBuffers().drums;if(!d)throw new Error('Separate stems in Stem Lab first');status('RUNNING: detecting drum onsets');const hits=humanizeHits(detectOnsets(d),Number($('#rp-timing').value),Number($('#rp-velocity').value));const syn=synthDrums(d,hits);drumOut=blend(d,syn,Number($('#rp-drumblend').value)/100);const k=hits.filter(x=>x.type==='kick').length,s=hits.filter(x=>x.type==='snare').length,h=hits.filter(x=>x.type==='hat').length;$('#rp-druminfo').textContent=`${hits.length} hits • kick ${k} • snare ${s} • hat ${h}`;status('DONE: virtual drums built');}catch(e){status('ERROR: '+e.message);}};
+  $('#rp-bass').onclick=async()=>{try{const b=stemBuffers().bass,p=stemPaths().bass;if(!b||!p)throw new Error('Separate stems in Stem Lab first');status('RUNNING: Basic Pitch analyzing bass stem');const r=await window.electronAPI?.analyzeBassNotes?.(p);if(!r?.success)throw new Error(r?.error||'Basic Pitch failed');const notes=humanizeNotes(r.notes,Number($('#rp-timing').value),Number($('#rp-velocity').value));let syn=null,source='internal synth';const pack=await loadSelectedInstrumentPack('bass');if(pack?.samplePath){status('RUNNING: loading bass sample pack '+pack.name);const sample=await decodeAudioFile(pack.samplePath);syn=synthBassFromSample(b,notes,sample,Number(pack.rootMidi||36));source=pack.name;}else{syn=synthBass(b,notes);}bassOut=blend(b,syn,Number($('#rp-bassblend').value)/100);$('#rp-bassinfo').textContent=r.count+' notes • '+source+' ready';status('DONE: virtual bass built with '+source);}catch(e){status('ERROR: '+e.message);}};
+  $('#rp-drums').onclick=async()=>{try{const d=stemBuffers().drums;if(!d)throw new Error('Separate stems in Stem Lab first');status('RUNNING: detecting drum onsets');const hits=humanizeHits(detectOnsets(d),Number($('#rp-timing').value),Number($('#rp-velocity').value));let syn=null,source='internal synth';const pack=await loadSelectedInstrumentPack('drums');if(pack?.samplePaths){status('RUNNING: loading drum sample pack '+pack.name);const samples={};for(const type of ['kick','snare','hat'])if(pack.samplePaths[type])samples[type]=await decodeAudioFile(pack.samplePaths[type]);syn=synthDrumsFromSamples(d,hits,samples);source=pack.name;}else{syn=synthDrums(d,hits);}drumOut=blend(d,syn,Number($('#rp-drumblend').value)/100);const k=hits.filter(x=>x.type==='kick').length,s=hits.filter(x=>x.type==='snare').length,h=hits.filter(x=>x.type==='hat').length;$('#rp-druminfo').textContent=`${hits.length} hits • kick ${k} • snare ${s} • hat ${h} • ${source}`;status('DONE: virtual drums built with '+source);}catch(e){status('ERROR: '+e.message);}};
   $('#rp-remix').onclick=()=>{try{const st=stemBuffers(),ref=st.vocals||st.other||st.drums||st.bass;if(!ref)throw new Error('Separate stems first');remix=makeBufferLike(ref);if(st.vocals)mixInto(remix,st.vocals);if(st.other)mixInto(remix,st.other);if(bassOut)mixInto(remix,bassOut);else if(st.bass)mixInto(remix,st.bass);if(drumOut)mixInto(remix,drumOut);else if(st.drums)mixInto(remix,st.drums);normalize(remix);const before=opts.getOriginalBuffer?opts.getOriginalBuffer():null;Promise.resolve(before).then(b=>{$('#rp-score').textContent=b?`D1 before ${score(b).toFixed(1)}% → after ${score(remix).toFixed(1)}%`:`D1 after ${score(remix).toFixed(1)}%`;});status('DONE: Re-Performance remix ready');}catch(e){status('ERROR: '+e.message);}};
   $('#rp-use').onclick=async()=>{try{if(!remix)throw new Error('Build Re-Performance Remix first');await opts.commitSource?.(remix);window.__reperfCurrentSource=remix;status('DONE: Re-Performance set as current source');}catch(e){status('ERROR: '+e.message);}};
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';check();};$('.rp-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};check();

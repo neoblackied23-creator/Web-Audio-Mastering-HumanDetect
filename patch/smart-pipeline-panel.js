@@ -10,18 +10,19 @@ function humanScore(buf){
 export function mountSmartPipeline(opts={}){
   if(window.__smartPipelineMounted)return;window.__smartPipelineMounted=true;
   const style=document.createElement('style');
-  style.textContent=`.sp-toggle{position:fixed;right:18px;bottom:248px;z-index:99997;border-radius:999px;padding:10px 14px;border:1px solid #555;background:#24242a;color:#fff}.sp-panel{position:fixed;left:18px;bottom:18px;width:min(760px,calc(100vw - 36px));max-height:calc(100vh - 80px);overflow:auto;z-index:100006;padding:14px;border:1px solid #444;border-radius:14px;background:rgba(18,18,24,.98);color:#f3f3f3;box-shadow:0 18px 50px #0009;font-family:system-ui;display:none}.sp-head{display:flex;justify-content:space-between}.sp-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:10px}.sp-stage{padding:9px;border-radius:9px;background:#ffffff0d;border:1px solid #ffffff16;font-size:11px}.sp-stage b{display:block;margin-bottom:3px}.sp-stage[data-state=running]{outline:1px solid #a98cff}.sp-stage[data-state=done]{background:#1d3b2a}.sp-stage[data-state=error]{background:#4b2222}.sp-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.sp-btn{border:1px solid #ffffff2a;background:#ffffff10;color:inherit;border-radius:8px;padding:9px 11px}.sp-btn.main{background:#9d6cff;font-weight:700}.sp-btn:disabled{opacity:.45}.sp-progress{margin-top:10px;height:10px;background:#ffffff12;border-radius:999px;overflow:hidden}.sp-fill{height:100%;width:0;background:#a98cff;transition:width .2s}.sp-meta{font-size:11px;opacity:.75;margin-top:7px}.sp-log{margin-top:10px;max-height:130px;overflow:auto;background:#0005;border-radius:8px;padding:7px;font:11px/1.4 ui-monospace,Consolas,monospace}.sp-close{background:none;border:0;color:inherit;font-size:18px}@media(max-width:760px){.sp-grid{grid-template-columns:1fr 1fr}.sp-panel{left:12px;right:12px;width:auto}}`;
+  style.textContent=`.sp-toggle{position:fixed;right:18px;bottom:248px;z-index:99997;border-radius:999px;padding:10px 14px;border:1px solid #555;background:#24242a;color:#fff}.sp-panel{position:fixed;left:18px;bottom:18px;width:min(760px,calc(100vw - 36px));max-height:calc(100vh - 80px);overflow:auto;z-index:100006;padding:14px;border:1px solid #444;border-radius:14px;background:rgba(18,18,24,.98);color:#f3f3f3;box-shadow:0 18px 50px #0009;font-family:system-ui;display:none}.sp-head{display:flex;justify-content:space-between}.sp-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;margin-top:10px}.sp-stage{padding:9px;border-radius:9px;background:#ffffff0d;border:1px solid #ffffff16;font-size:11px}.sp-stage b{display:block;margin-bottom:3px}.sp-stage[data-state=running]{outline:1px solid #a98cff}.sp-stage[data-state=done]{background:#1d3b2a}.sp-stage[data-state=error]{background:#4b2222}.sp-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.sp-btn{border:1px solid #ffffff2a;background:#ffffff10;color:inherit;border-radius:8px;padding:9px 11px}.sp-btn.main{background:#9d6cff;font-weight:700}.sp-btn:disabled{opacity:.45}.sp-progress{margin-top:10px;height:10px;background:#ffffff12;border-radius:999px;overflow:hidden}.sp-fill{height:100%;width:0;background:#a98cff;transition:width .2s}.sp-meta{font-size:11px;opacity:.75;margin-top:7px}.sp-log{margin-top:10px;max-height:130px;overflow:auto;background:#0005;border-radius:8px;padding:7px;font:11px/1.4 ui-monospace,Consolas,monospace}.sp-close{background:none;border:0;color:inherit;font-size:18px}@media(max-width:760px){.sp-grid{grid-template-columns:1fr 1fr}.sp-panel{left:12px;right:12px;width:auto}}`;
   document.head.appendChild(style);
 
   const toggle=document.createElement('button');toggle.className='sp-toggle';toggle.textContent='Smart Pipeline';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='sp-panel';
-  root.innerHTML=`<div class="sp-head"><div><b>Smart Pipeline</b><div class="sp-meta">v2.8 • one-click Stem → Auto Select → Re-Performance → Remix</div></div><button class="sp-close">×</button></div>
+  root.innerHTML=`<div class="sp-head"><div><b>Smart Pipeline</b><div class="sp-meta">v2.9 • Stem → Auto Select → Re-Performance → Auto Mastering → Commit</div></div><button class="sp-close">×</button></div>
   <div class="sp-grid">
     <div class="sp-stage" id="sp-s1" data-state="idle"><b>1. Stem Engine</b><span>IDLE</span></div>
     <div class="sp-stage" id="sp-s2" data-state="idle"><b>2. Separate</b><span>IDLE</span></div>
     <div class="sp-stage" id="sp-s3" data-state="idle"><b>3. Auto Select</b><span>IDLE</span></div>
     <div class="sp-stage" id="sp-s4" data-state="idle"><b>4. Re-Perform</b><span>IDLE</span></div>
-    <div class="sp-stage" id="sp-s5" data-state="idle"><b>5. Commit</b><span>IDLE</span></div>
+    <div class="sp-stage" id="sp-s5" data-state="idle"><b>5. Mastering</b><span>IDLE</span></div>
+    <div class="sp-stage" id="sp-s6" data-state="idle"><b>6. Commit</b><span>IDLE</span></div>
   </div>
   <div class="sp-row"><label><input type="checkbox" id="sp-skip" checked> Reuse existing stems if available</label><label><input type="checkbox" id="sp-commit" checked> Auto use result as current source</label></div>
   <div class="sp-row"><button class="sp-btn" id="sp-check">Check Prerequisites</button><button class="sp-btn main" id="sp-run">SMART PIPELINE</button></div>
@@ -31,7 +32,7 @@ export function mountSmartPipeline(opts={}){
   document.body.appendChild(root);
 
   const $=s=>root.querySelector(s);
-  const stages=[1,2,3,4,5].map(i=>$('#sp-s'+i));
+  const stages=[1,2,3,4,5,6].map(i=>$('#sp-s'+i));
   const log=t=>{const d=document.createElement('div');d.textContent='['+new Date().toLocaleTimeString()+'] '+t;$('#sp-log').appendChild(d);$('#sp-log').scrollTop=$('#sp-log').scrollHeight;};
   const setStage=(i,state,text)=>{const el=stages[i-1];el.dataset.state=state;el.querySelector('span').textContent=text||state.toUpperCase();};
   const progress=p=>{$('#sp-fill').style.width=clamp(p,0,100)+'%';};
@@ -87,16 +88,23 @@ export function mountSmartPipeline(opts={}){
       setStage(4,'running','BASS');log('Stage 4a: bass re-performance');await rp.buildBass();progress(69);
       setStage(4,'running','DRUMS');log('Stage 4b: drum re-performance');await rp.buildDrums();progress(82);
       setStage(4,'running','REMIX');log('Stage 4c: rebuilding remix');const remix=await rp.buildRemix();
-      setStage(4,'done','READY');progress(91);
+      setStage(4,'done','READY');progress(78);
 
-      setStage(5,'running',$('#sp-commit').checked?'COMMITTING':'SKIPPED');
-      if($('#sp-commit').checked){await rp.useCurrent();log('Stage 5: result set as current source');}
-      setStage(5,'done',$('#sp-commit').checked?'CURRENT':'READY');progress(100);
+      const ma=await waitApi('__masteringAPI');
+      if(!ma)throw new Error('Mastering API not available.');
+      setStage(5,'running','MASTERING');log('Stage 5: auto mastering for '+(profile?.name||'Clean')+' profile');
+      const master=await ma.applyAuto(remix,profile?.name||'Clean',false);
+      setStage(5,'done',String(master.style||'MASTER').toUpperCase());progress(92);
 
-      const after=humanScore(remix);
+      setStage(6,'running',$('#sp-commit').checked?'COMMITTING':'SKIPPED');
+      if($('#sp-commit').checked){await ma.commit(master.buffer,master.lufs);log('Stage 6: mastered result set as current source');}
+      setStage(6,'done',$('#sp-commit').checked?'CURRENT':'READY');progress(100);
+
+      const after=humanScore(master.buffer);
       const delta=(after??0)-(before??0);
-      $('#sp-summary').textContent=`DONE • ${profile?.name||'Auto'} • D1 ${before?.toFixed(1)??'—'}% → ${after?.toFixed(1)??'—'}% (${delta>=0?'+':''}${delta.toFixed(1)})`;
-      log('DONE Smart Pipeline • D1 '+before.toFixed(1)+' → '+after.toFixed(1));
+      const lufs=Number.isFinite(master.lufs)?' • '+master.lufs.toFixed(1)+' LUFS':'';
+      $('#sp-summary').textContent=`DONE • ${profile?.name||'Auto'} → ${master.style} • D1 ${before?.toFixed(1)??'—'}% → ${after?.toFixed(1)??'—'}% (${delta>=0?'+':''}${delta.toFixed(1)})${lufs}`;
+      log('DONE Smart Pipeline • '+master.style+' • D1 '+before.toFixed(1)+' → '+after.toFixed(1)+(Number.isFinite(master.lufs)?' • '+master.lufs.toFixed(1)+' LUFS':''));
     }catch(e){
       const active=stages.find(x=>x.dataset.state==='running');if(active){active.dataset.state='error';active.querySelector('span').textContent='ERROR';}
       $('#sp-summary').textContent='ERROR • '+e.message;log('ERROR: '+e.message);

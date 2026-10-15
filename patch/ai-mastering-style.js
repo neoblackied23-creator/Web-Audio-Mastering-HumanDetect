@@ -24,7 +24,9 @@ const STYLE={
   natural:{sat:.04,width:.03,punch:.03,bright:.02,warm:.02},
   cinematic:{sat:.08,width:.12,punch:.08,bright:.03,warm:.06},
   spatial:{sat:.04,width:.18,punch:.02,bright:.04,warm:.01},
-  punch:{sat:.08,width:.05,punch:.16,bright:.02,warm:.02}
+  punch:{sat:.08,width:.05,punch:.16,bright:.02,warm:.02},
+  brightness:{sat:.04,width:.08,punch:.04,bright:.16,warm:-.01},
+  vinyl:{sat:.14,width:.02,punch:.02,bright:-.05,warm:.14}
 };
 
 export function getMasteringSettings(profile='generic',style='ai-clean',intensity='normal'){

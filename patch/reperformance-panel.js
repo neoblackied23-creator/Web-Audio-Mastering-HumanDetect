@@ -212,6 +212,7 @@ export function mountReperformancePanel(opts={}){
   }
   $('#rp-autoselect').onclick=async()=>{try{await autoSelectProfile();}catch(e){status('ERROR: '+e.message);}};
   $('#rp-auto').onclick=async()=>{const b=$('#rp-auto');b.disabled=true;try{status('RUNNING: Auto Re-Performance');await autoSelectProfile();await buildBass();await new Promise(r=>setTimeout(r,0));await buildDrums();await new Promise(r=>setTimeout(r,0));await buildRemix();status('DONE: Auto Re-Performance complete');}catch(e){status('ERROR: '+e.message);}finally{b.disabled=false;}};
-  $('#rp-use').onclick=async()=>{try{if(!remix)throw new Error('Build Re-Performance Remix first');await opts.commitSource?.(remix);window.__reperfCurrentSource=remix;status('DONE: Re-Performance set as current source');}catch(e){status('ERROR: '+e.message);}};
-  toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';check();};$('.rp-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};check();
+  async function useCurrent(){if(!remix)throw new Error('Build Re-Performance Remix first');await opts.commitSource?.(remix);window.__reperfCurrentSource=remix;status('DONE: Re-Performance set as current source');return remix;}
+  $('#rp-use').onclick=async()=>{try{await useCurrent();}catch(e){status('ERROR: '+e.message);}};
+  window.__reperformanceAPI={check,autoSelect:autoSelectProfile,buildBass,buildDrums,buildRemix,useCurrent,getRemix:()=>remix};\n  toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';check();};$('.rp-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};check();
 }

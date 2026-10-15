@@ -171,5 +171,6 @@ export function mountStemLabPanel(opts={}){
   $('#sl-export').onclick=()=>{try{if(!stems[active])throw new Error('Separate stems first');downloadBuffer(processStemBuffer(stems[active],settings[active]),active+'_processed.wav');status('DONE: exported '+active+'_processed.wav');}catch(e){status('ERROR: '+e.message);}};
   $('#sl-remix').onclick=()=>{try{if(!Object.keys(stems).length)throw new Error('Separate stems first');processedRemix=mixBuffers(stems,settings);window.__stemLabProcessedRemix=processedRemix;status('DONE: processed stem remix ready');}catch(e){status('ERROR: '+e.message);}};
   $('#sl-use').onclick=async()=>{try{if(!processedRemix)throw new Error('Remix All first');await opts.commitSource?.(processedRemix);status('DONE: Stem Lab remix set as current source');}catch(e){status('ERROR: '+e.message);}};
-  window.__stemLabAPI={engine,separate:separateStems,getBuffers:()=>stems,getPaths:()=>window.__stemLabStemPaths||{}};\n  toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';engine();};$('.sl-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};renderSettings();engine();
+  window.__stemLabAPI={engine,separate:separateStems,getBuffers:()=>stems,getPaths:()=>window.__stemLabStemPaths||{}};
+  toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';engine();};$('.sl-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};renderSettings();engine();
 }

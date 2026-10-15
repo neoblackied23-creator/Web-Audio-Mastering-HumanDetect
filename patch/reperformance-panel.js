@@ -61,6 +61,50 @@ function blend(original,synthetic,amount){
 }
 function score(buf){const r=analyzeAudioBuffer(buf);return Number(r.humanScore??r.humanPct);}
 
+function stemStats(buf){
+  if(!buf)return null;
+  const ch=buf.numberOfChannels,sr=buf.sampleRate,step=Math.max(1,Math.floor(buf.length/(sr*45))),n=Math.ceil(buf.length/step);
+  let sum=0,peak=0,z=0,prev=0,low=0,lowSum=0,flux=0,prevAbs=0,count=0;
+  for(let i=0;i<buf.length;i+=step){
+    let x=0;for(let c=0;c<ch;c++)x+=buf.getChannelData(c)[i]/ch;
+    const a=Math.abs(x);sum+=x*x;peak=Math.max(peak,a);if(count&&Math.sign(x)!==Math.sign(prev))z++;
+    low+=.06*(x-low);lowSum+=low*low;flux+=Math.max(0,a-prevAbs);prevAbs=a;prev=x;count++;
+  }
+  const rms=Math.sqrt(sum/Math.max(1,count)),crest=peak/Math.max(.00001,rms),zcr=z/Math.max(1,count),lowRatio=Math.sqrt(lowSum/Math.max(1,count))/Math.max(.00001,rms),activity=flux/Math.max(1,count);
+  return {rms,crest,zcr,lowRatio,activity};
+}
+function analyzeReperformanceProfile(stems){
+  const b=stemStats(stems.bass),d=stemStats(stems.drums);
+  if(!b&&!d)return {name:'Clean',reason:'no stem metrics'};
+  const drumActivity=d?.activity||0,drumCrest=d?.crest||0,drumZcr=d?.zcr||0,bassLow=b?.lowRatio||0,bassCrest=b?.crest||0;
+  let name='Clean',reason='balanced stem profile';
+  if(drumActivity>.014||drumCrest>7.5){name='Punchy';reason='strong drum transients / high crest';}
+  else if(drumZcr>.19&&drumActivity>.006){name='Electronic';reason='dense high-frequency drum activity';}
+  else if(bassLow>.76&&bassCrest<6.2){name='Warm';reason='bass-dominant smooth low end';}
+  return {name,reason,bass:b,drums:d};
+}
+function profileSettings(name){
+  return ({
+    Clean:{timing:8,velocity:6,bass:35,drums:30},
+    Warm:{timing:14,velocity:10,bass:50,drums:38},
+    Punchy:{timing:10,velocity:12,bass:45,drums:60},
+    Electronic:{timing:6,velocity:5,bass:62,drums:68}
+  })[name]||{timing:10,velocity:8,bass:45,drums:45};
+}
+function packScore(pack,type,profile){
+  if(!pack||pack.type!==type)return -1;
+  const text=[pack.id,pack.name,pack.profile,(pack.tags||[]).join(' ')].join(' ').toLowerCase();
+  let s=1;
+  const p=profile.toLowerCase();
+  if(text.includes(p))s+=10;
+  if(profile==='Warm'&&/(warm|vintage|round|analog|acoustic)/.test(text))s+=5;
+  if(profile==='Punchy'&&/(punch|attack|rock|live|tight)/.test(text))s+=5;
+  if(profile==='Electronic'&&/(808|electro|synth|digital|edm)/.test(text))s+=5;
+  if(profile==='Clean'&&/(clean|studio|natural|starter)/.test(text))s+=4;
+  if(text.includes('starter'))s+=1;
+  return s;
+}
+
 async function decodeAudioFile(path){
   const bytes=await window.electronAPI?.readFileData?.(path);
   if(!bytes)throw new Error('Could not read instrument sample: '+path);
@@ -121,8 +165,9 @@ export function mountReperformancePanel(opts={}){
   document.head.appendChild(style);
   const toggle=document.createElement('button');toggle.className='rp-toggle';toggle.textContent='Re-Performance';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='rp-panel';
-  root.innerHTML=`<div class="rp-head"><div><b>Re-Performance Lab</b><div class="rp-status">v2.5 • Basic Pitch bass + drum onset + virtual instruments</div></div><button class="rp-close">×</button></div>
+  root.innerHTML=`<div class="rp-head"><div><b>Re-Performance Lab</b><div class="rp-status">v2.7 • Auto Instrument Selection + Basic Pitch + virtual instruments</div></div><button class="rp-close">×</button></div>
   <div class="rp-row"><button class="rp-btn" id="rp-check">Check Engine</button><button class="rp-btn" id="rp-setup">Setup Re-Performance</button><span id="rp-engine" class="rp-status">checking…</span></div>
+  <div class="rp-card" style="margin-top:10px"><b>Auto Instrument Selection</b><div id="rp-profile" class="rp-status">Profile: not analyzed</div><div class="rp-row"><button class="rp-btn" id="rp-autoselect">Auto Select</button><button class="rp-btn main" id="rp-auto">AUTO RE-PERFORMANCE</button></div></div>
   <div class="rp-grid">
     <div class="rp-card"><b>Bass Re-Performance</b><div class="rp-status">Basic Pitch converts bass stem to note events, then internal synth replays them.</div><div class="rp-field"><label>Timing Humanize <span id="rp-tv">12 ms</span></label><input id="rp-timing" type="range" min="0" max="35" value="12"></div><div class="rp-field"><label>Velocity Humanize <span id="rp-vv">8%</span></label><input id="rp-velocity" type="range" min="0" max="25" value="8"></div><div class="rp-field"><label>Bass Replace <span id="rp-bv">55%</span></label><input id="rp-bassblend" type="range" min="0" max="100" value="55"></div><button class="rp-btn" id="rp-bass">Analyze + Build Bass</button><div id="rp-bassinfo" class="rp-status">No bass analysis yet.</div></div>
     <div class="rp-card"><b>Drum Re-Performance</b><div class="rp-status">Transient/onset detector classifies kick/snare/hat and internal drum synth replays them.</div><div class="rp-field"><label>Drum Replace <span id="rp-dv">45%</span></label><input id="rp-drumblend" type="range" min="0" max="100" value="45"></div><button class="rp-btn" id="rp-drums">Analyze + Build Drums</button><div id="rp-druminfo" class="rp-status">No drum analysis yet.</div></div>
@@ -140,9 +185,33 @@ export function mountReperformancePanel(opts={}){
   $('#rp-setup').onclick=async()=>{try{status('RUNNING: setup Basic Pitch engine');const r=await window.electronAPI?.setupReperfEngine?.();if(!r?.success)throw new Error(r?.error||'setup failed');status('DONE: Re-Performance engine ready');await check();}catch(e){status('ERROR: '+e.message);}};
   const labels=()=>{$('#rp-tv').textContent=$('#rp-timing').value+' ms';$('#rp-vv').textContent=$('#rp-velocity').value+'%';$('#rp-bv').textContent=$('#rp-bassblend').value+'%';$('#rp-dv').textContent=$('#rp-drumblend').value+'%';};
   ['#rp-timing','#rp-velocity','#rp-bassblend','#rp-drumblend'].forEach(id=>$(id).addEventListener('input',labels));labels();
-  $('#rp-bass').onclick=async()=>{try{const b=stemBuffers().bass,p=stemPaths().bass;if(!b||!p)throw new Error('Separate stems in Stem Lab first');status('RUNNING: Basic Pitch analyzing bass stem');const r=await window.electronAPI?.analyzeBassNotes?.(p);if(!r?.success)throw new Error(r?.error||'Basic Pitch failed');const notes=humanizeNotes(r.notes,Number($('#rp-timing').value),Number($('#rp-velocity').value));let syn=null,source='internal synth';const pack=await loadSelectedInstrumentPack('bass');if(pack?.samplePath){status('RUNNING: loading bass sample pack '+pack.name);const sample=await decodeAudioFile(pack.samplePath);syn=synthBassFromSample(b,notes,sample,Number(pack.rootMidi||36));source=pack.name;}else{syn=synthBass(b,notes);}bassOut=blend(b,syn,Number($('#rp-bassblend').value)/100);$('#rp-bassinfo').textContent=r.count+' notes • '+source+' ready';status('DONE: virtual bass built with '+source);}catch(e){status('ERROR: '+e.message);}};
-  $('#rp-drums').onclick=async()=>{try{const d=stemBuffers().drums;if(!d)throw new Error('Separate stems in Stem Lab first');status('RUNNING: detecting drum onsets');const hits=humanizeHits(detectOnsets(d),Number($('#rp-timing').value),Number($('#rp-velocity').value));let syn=null,source='internal synth';const pack=await loadSelectedInstrumentPack('drums');if(pack?.samplePaths){status('RUNNING: loading drum sample pack '+pack.name);const samples={};for(const type of ['kick','snare','hat'])if(pack.samplePaths[type])samples[type]=await decodeAudioFile(pack.samplePaths[type]);syn=synthDrumsFromSamples(d,hits,samples);source=pack.name;}else{syn=synthDrums(d,hits);}drumOut=blend(d,syn,Number($('#rp-drumblend').value)/100);const k=hits.filter(x=>x.type==='kick').length,s=hits.filter(x=>x.type==='snare').length,h=hits.filter(x=>x.type==='hat').length;$('#rp-druminfo').textContent=`${hits.length} hits • kick ${k} • snare ${s} • hat ${h} • ${source}`;status('DONE: virtual drums built with '+source);}catch(e){status('ERROR: '+e.message);}};
-  $('#rp-remix').onclick=()=>{try{const st=stemBuffers(),ref=st.vocals||st.other||st.drums||st.bass;if(!ref)throw new Error('Separate stems first');remix=makeBufferLike(ref);if(st.vocals)mixInto(remix,st.vocals);if(st.other)mixInto(remix,st.other);if(bassOut)mixInto(remix,bassOut);else if(st.bass)mixInto(remix,st.bass);if(drumOut)mixInto(remix,drumOut);else if(st.drums)mixInto(remix,st.drums);normalize(remix);const before=opts.getOriginalBuffer?opts.getOriginalBuffer():null;Promise.resolve(before).then(b=>{$('#rp-score').textContent=b?`D1 before ${score(b).toFixed(1)}% → after ${score(remix).toFixed(1)}%`:`D1 after ${score(remix).toFixed(1)}%`;});status('DONE: Re-Performance remix ready');}catch(e){status('ERROR: '+e.message);}};
+  async function buildBass(){const b=stemBuffers().bass,p=stemPaths().bass;if(!b||!p)throw new Error('Separate stems in Stem Lab first');status('RUNNING: Basic Pitch analyzing bass stem');const r=await window.electronAPI?.analyzeBassNotes?.(p);if(!r?.success)throw new Error(r?.error||'Basic Pitch failed');const notes=humanizeNotes(r.notes,Number($('#rp-timing').value),Number($('#rp-velocity').value));let syn=null,source='internal synth';const pack=await loadSelectedInstrumentPack('bass');if(pack?.samplePath){status('RUNNING: loading bass sample pack '+pack.name);const sample=await decodeAudioFile(pack.samplePath);syn=synthBassFromSample(b,notes,sample,Number(pack.rootMidi||36));source=pack.name;}else{syn=synthBass(b,notes);}bassOut=blend(b,syn,Number($('#rp-bassblend').value)/100);$('#rp-bassinfo').textContent=r.count+' notes • '+source+' ready';status('DONE: virtual bass built with '+source);return true;}
+  $('#rp-bass').onclick=async()=>{try{await buildBass();}catch(e){status('ERROR: '+e.message);}};
+  async function buildDrums(){const d=stemBuffers().drums;if(!d)throw new Error('Separate stems in Stem Lab first');status('RUNNING: detecting drum onsets');const hits=humanizeHits(detectOnsets(d),Number($('#rp-timing').value),Number($('#rp-velocity').value));let syn=null,source='internal synth';const pack=await loadSelectedInstrumentPack('drums');if(pack?.samplePaths){status('RUNNING: loading drum sample pack '+pack.name);const samples={};for(const type of ['kick','snare','hat'])if(pack.samplePaths[type])samples[type]=await decodeAudioFile(pack.samplePaths[type]);syn=synthDrumsFromSamples(d,hits,samples);source=pack.name;}else{syn=synthDrums(d,hits);}drumOut=blend(d,syn,Number($('#rp-drumblend').value)/100);const k=hits.filter(x=>x.type==='kick').length,s=hits.filter(x=>x.type==='snare').length,h=hits.filter(x=>x.type==='hat').length;$('#rp-druminfo').textContent=`${hits.length} hits • kick ${k} • snare ${s} • hat ${h} • ${source}`;status('DONE: virtual drums built with '+source);return true;}
+  $('#rp-drums').onclick=async()=>{try{await buildDrums();}catch(e){status('ERROR: '+e.message);}};
+  async function buildRemix(){const st=stemBuffers(),ref=st.vocals||st.other||st.drums||st.bass;if(!ref)throw new Error('Separate stems first');remix=makeBufferLike(ref);if(st.vocals)mixInto(remix,st.vocals);if(st.other)mixInto(remix,st.other);if(bassOut)mixInto(remix,bassOut);else if(st.bass)mixInto(remix,st.bass);if(drumOut)mixInto(remix,drumOut);else if(st.drums)mixInto(remix,st.drums);normalize(remix);const before=opts.getOriginalBuffer?opts.getOriginalBuffer():null;const b=await Promise.resolve(before);$('#rp-score').textContent=b?`D1 before ${score(b).toFixed(1)}% → after ${score(remix).toFixed(1)}%`:`D1 after ${score(remix).toFixed(1)}%`;status('DONE: Re-Performance remix ready');return remix;}
+  $('#rp-remix').onclick=async()=>{try{await buildRemix();}catch(e){status('ERROR: '+e.message);}};
+  async function autoSelectProfile(){
+    const st=stemBuffers();if(!st.bass&&!st.drums)throw new Error('Separate stems in Stem Lab first');
+    const profile=analyzeReperformanceProfile(st),cfg=profileSettings(profile.name);
+    $('#rp-timing').value=cfg.timing;$('#rp-velocity').value=cfg.velocity;$('#rp-bassblend').value=cfg.bass;$('#rp-drumblend').value=cfg.drums;labels();
+    let r=await window.electronAPI?.instrumentManagerList?.(),packs=r?.packs||[];
+    if(!packs.some(p=>p.type==='bass')||!packs.some(p=>p.type==='drums')){
+      status('RUNNING: installing starter packs as fallback');
+      const x=await window.electronAPI?.installStarterInstruments?.();if(x?.success)packs=x.packs||packs;
+    }
+    for(const type of ['bass','drums']){
+      const candidates=packs.filter(p=>p.type===type).sort((a,b)=>packScore(b,type,profile.name)-packScore(a,type,profile.name));
+      if(candidates[0])localStorage.setItem('hd_instrument_'+type,candidates[0].id);
+    }
+    window.__instrumentSelection={bass:localStorage.getItem('hd_instrument_bass'),drums:localStorage.getItem('hd_instrument_drums')};
+    $('#rp-profile').textContent='Profile: '+profile.name+' • '+profile.reason+' • bass '+(window.__instrumentSelection.bass||'internal')+' • drums '+(window.__instrumentSelection.drums||'internal');
+    window.__reperformanceProfile=profile;
+    status('DONE: Auto Select → '+profile.name);
+    return profile;
+  }
+  $('#rp-autoselect').onclick=async()=>{try{await autoSelectProfile();}catch(e){status('ERROR: '+e.message);}};
+  $('#rp-auto').onclick=async()=>{const b=$('#rp-auto');b.disabled=true;try{status('RUNNING: Auto Re-Performance');await autoSelectProfile();await buildBass();await new Promise(r=>setTimeout(r,0));await buildDrums();await new Promise(r=>setTimeout(r,0));await buildRemix();status('DONE: Auto Re-Performance complete');}catch(e){status('ERROR: '+e.message);}finally{b.disabled=false;}};
   $('#rp-use').onclick=async()=>{try{if(!remix)throw new Error('Build Re-Performance Remix first');await opts.commitSource?.(remix);window.__reperfCurrentSource=remix;status('DONE: Re-Performance set as current source');}catch(e){status('ERROR: '+e.message);}};
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';check();};$('.rp-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};check();
 }

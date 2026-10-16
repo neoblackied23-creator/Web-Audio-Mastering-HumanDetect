@@ -1,0 +1,62 @@
+name: Mirror Approved Instrument Sources
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'instrument-library/catalog.json'
+      - '.github/workflows/mirror-instruments.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare approved mirrors
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p mirror
+          python - <<'PY'
+          import json, pathlib, subprocess, hashlib, os
+          cat=json.load(open('instrument-library/catalog.json','r',encoding='utf-8'))
+          out=pathlib.Path('mirror')
+          manifest=[]
+          for item in cat['sources']:
+              if not item.get('mirror') or not item.get('redistributable'):
+                  continue
+              url=item.get('source_url')
+              if not url:
+                  continue
+              fn=item['id']+'.zip'
+              dst=out/fn
+              print('Downloading',item['id'],url)
+              subprocess.run(['curl','-L','--fail','--retry','3','-o',str(dst),url],check=True)
+              h=hashlib.sha256(dst.read_bytes()).hexdigest()
+              manifest.append({
+                  'id':item['id'],'name':item['name'],'file':fn,'sha256':h,
+                  'license':item.get('license'),'project_url':item.get('project_url'),
+                  'app_usable':bool(item.get('app_usable'))
+              })
+          (out/'manifest.json').write_text(json.dumps({'version':1,'assets':manifest},indent=2)+'\n',encoding='utf-8')
+          PY
+
+      - name: Create or update instrument cache release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="instrument-cache-v1"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "HumanDetect Instrument Cache v1" --notes "License-cleared mirrored instrument source packages. See instrument-library/catalog.json."
+          fi
+          gh release upload "$TAG" mirror/* --clobber
+
+      - name: Show mirrored files
+        run: ls -lh mirror

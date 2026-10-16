@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "release_tag": "instrument-cache-v1",
+  "notes": "Only assets whose redistribution rights are sufficiently clear should be mirrored. external_only entries must never be copied into our release.",
+  "sources": [
+    {
+      "id": "publicsamples-peach-source",
+      "name": "Peach source",
+      "kind": "source",
+      "category": "synth",
+      "source_url": "https://github.com/publicsamples/Peach/archive/refs/heads/master.zip",
+      "project_url": "https://github.com/publicsamples/Peach",
+      "license": "GPL-3.0",
+      "redistributable": true,
+      "mirror": true,
+      "app_usable": false,
+      "note": "Mirrors GPL project source only. PeachSamples.zip is intentionally not mirrored until sample-content redistribution is explicitly confirmed."
+    },
+    {
+      "id": "sourc3array-808tk-source",
+      "name": "808TK source",
+      "kind": "source",
+      "category": "drums",
+      "source_url": "https://github.com/sourc3array/808TK/archive/refs/heads/main.zip",
+      "project_url": "https://github.com/sourc3array/808TK",
+      "license": "GPL-3.0",
+      "redistributable": true,
+      "mirror": true,
+      "app_usable": false,
+      "note": "Repository/programming is GPL-3.0, but actual Wave Alchemy sample content is not included and is not mirrored."
+    },
+    {
+      "id": "native-instruments-free",
+      "name": "Native Instruments Free",
+      "kind": "external",
+      "category": "multi",
+      "project_url": "https://www.native-instruments.com/collections/free",
+      "redistributable": false,
+      "mirror": false,
+      "external_only": true,
+      "note": "User-installed third-party instruments; do not re-host."
+    },
+    {
+      "id": "happycomposer-free-bass",
+      "name": "Happy Composer Free Bass Guitar",
+      "kind": "external",
+      "category": "bass",
+      "project_url": "https://happycomposer.com/free-bass-guitar/",
+      "redistributable": false,
+      "mirror": false,
+      "external_only": true,
+      "note": "Redistribution permission not verified; do not re-host."
+    },
+    {
+      "id": "archive-free-soundfonts",
+      "name": "Archive.org Free SoundFonts collection",
+      "kind": "external",
+      "category": "multi",
+      "project_url": "https://archive.org/download/free-soundfonts-sf2-2019-04",
+      "redistributable": false,
+      "mirror": false,
+      "external_only": true,
+      "note": "Collection contains mixed/unclear rights; whitelist individual files only after license verification."
+    },
+    {
+      "id": "pianobook",
+      "name": "Pianobook",
+      "kind": "external",
+      "category": "multi",
+      "project_url": "https://www.pianobook.co.uk/stories/100-free-sample-instruments/",
+      "redistributable": false,
+      "mirror": false,
+      "external_only": true,
+      "note": "Pianobook permits use in compositions but forbids redistributing libraries you do not own."
+    },
+    {
+      "id": "archive-500-soundfonts",
+      "name": "Archive.org 500 SoundFonts",
+      "kind": "external",
+      "category": "multi",
+      "project_url": "https://archive.org/details/500-soundfonts-full-gm-sets",
+      "redistributable": false,
+      "mirror": false,
+      "external_only": true,
+      "note": "Mixed/unclear rights; do not mirror wholesale."
+    }
+  ]
+}

@@ -6,8 +6,22 @@ export function mountInstrumentManager(){
   document.head.appendChild(style);
   const toggle=document.createElement('button');toggle.className='im-toggle';toggle.textContent='Instrument Manager';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='im-panel';
-  root.innerHTML=`<div class="im-head"><div><b>Instrument Manager</b><div class="im-status">v3.1 • Cloud Catalog • on-demand download • checksum • local cache</div></div><button class="im-close">×</button></div>
-  <div class="im-row"><button class="im-btn main" id="im-starter">Install Starter Packs</button><button class="im-btn" id="im-local">Install Local ZIP</button></div>
+  root.innerHTML=`<div class="im-head"><div><b>Instrument Manager</b><div class="im-status">v3.2 • Cloud Catalog • Pack Builder • checksum • local cache</div></div><button class="im-close">×</button></div>
+  <div class="im-row"><button class="im-btn main" id="im-starter">Install Starter Packs</button><button class="im-btn" id="im-local">Install Local ZIP</button><button class="im-btn" id="im-build-folder">Pack Builder: Folder</button><button class="im-btn" id="im-build-zip">Pack Builder: ZIP</button></div>
+  <div id="im-builder" class="im-item" style="display:none;grid-template-columns:1fr">
+    <div><b>Pack Builder v3.2</b><div id="im-builder-info" class="im-meta">Choose a folder or ZIP containing audio samples.</div></div>
+    <div class="im-row"><label>Name <input class="im-url" id="im-builder-name" style="min-width:190px" value="Custom Instrument Pack"></label><label>Type <select id="im-builder-type"><option value="drums">Drums</option><option value="bass">Bass</option></select></label></div>
+    <div class="im-row"><label style="flex:1">License / rights note <input class="im-url" id="im-builder-license" value="User-provided samples; rights not verified"></label></div>
+    <div id="im-builder-drums">
+      <div class="im-row"><label>Kick <select id="im-builder-kick"></select></label><label>Snare <select id="im-builder-snare"></select></label><label>Hat <select id="im-builder-hat"></select></label></div>
+    </div>
+    <div id="im-builder-bass" style="display:none">
+      <div class="im-row"><label>Bass sample <select id="im-builder-bassfile"></select></label><label>Root MIDI <input id="im-builder-root" type="number" min="0" max="127" value="36" style="width:70px"></label></div>
+    </div>
+    <div class="im-row"><button class="im-btn main" id="im-builder-create">Build + Install</button><button class="im-btn" id="im-builder-cancel">Cancel</button></div>
+    <div style="height:8px;background:#ffffff12;border-radius:999px;overflow:hidden"><div id="im-builder-progress" style="height:100%;width:0;background:#9d6cff;transition:width .2s"></div></div>
+    <div id="im-builder-stage" class="im-status">IDLE</div>
+  </div>
   <div class="im-row"><input class="im-url" id="im-url" placeholder="Direct instrument-pack ZIP URL"><button class="im-btn" id="im-download">Install URL</button></div>
   <div class="im-status">Pack format: ZIP containing <b>instrument.json</b>. Supported types: <b>drums</b> and <b>bass</b>.</div>
   <div class="im-row"><b>Cloud Catalog</b><button class="im-btn" id="im-cloud-refresh">Refresh</button><span id="im-cloud-mode" class="im-status">loading…</span></div>
@@ -17,7 +31,40 @@ export function mountInstrumentManager(){
   <div id="im-status" class="im-status">IDLE</div><div id="im-log" class="im-log"></div>`;
   document.body.appendChild(root);
   const $=s=>root.querySelector(s),log=t=>{const d=document.createElement('div');d.textContent='['+new Date().toLocaleTimeString()+'] '+t;$('#im-log').appendChild(d);$('#im-log').scrollTop=$('#im-log').scrollHeight;},status=t=>{$('#im-status').textContent=t;log(t);};
-  let packs=[];
+  let packs=[];let builderSession=null,builderAnalysis=null;
+  function builderProgress(p,stage){
+    const bar=$('#im-builder-progress');if(bar)bar.style.width=Math.max(0,Math.min(100,p))+'%';
+    const s=$('#im-builder-stage');if(s)s.textContent=stage||'';
+    if(stage)log('Pack Builder: '+stage);
+  }
+  function builderOptions(files,selected){
+    return (files||[]).map(x=>'<option value="'+esc(x.path)+'" '+(x.path===selected?'selected':'')+'>'+esc(x.name||x.relative||x.path)+'</option>').join('');
+  }
+  function renderBuilder(a){
+    builderAnalysis=a;$('#im-builder').style.display='grid';
+    $('#im-builder-type').value=['drums','bass'].includes(a.detectedType)?a.detectedType:'drums';
+    $('#im-builder-info').textContent=a.fileCount+' audio files • auto-detected '+a.detectedType+(a.truncated?' • list preview limited':'');
+    const all=a.files||[];
+    const pick=(key)=>{const ranked=a.candidates?.[key]||[];const seen=new Set();const out=[];for(const x of [...ranked,...all]){if(x?.path&&!seen.has(x.path)){seen.add(x.path);out.push(x);}}return out;};
+    $('#im-builder-kick').innerHTML=builderOptions(pick('kick'),a.mapping?.kick);
+    $('#im-builder-snare').innerHTML=builderOptions(pick('snare'),a.mapping?.snare);
+    $('#im-builder-hat').innerHTML=builderOptions(pick('hat'),a.mapping?.hat);
+    $('#im-builder-bassfile').innerHTML=builderOptions(pick('bass'),a.mapping?.bass);
+    $('#im-builder-root').value=Number(a.mapping?.rootMidi??36);
+    const syncType=()=>{const bass=$('#im-builder-type').value==='bass';$('#im-builder-drums').style.display=bass?'none':'block';$('#im-builder-bass').style.display=bass?'block':'none';};
+    $('#im-builder-type').onchange=syncType;syncType();builderProgress(45,'ANALYZED');
+  }
+  async function startBuilder(kind){
+    try{
+      builderProgress(5,'SELECTING SOURCE');
+      const p=kind==='zip'?await window.electronAPI?.instrumentPackBuilderSelectZip?.():await window.electronAPI?.instrumentPackBuilderSelectFolder?.();
+      if(!p?.path){builderProgress(0,'IDLE');return;}
+      builderProgress(15,'SCANNING');
+      const a=await window.electronAPI?.instrumentPackBuilderAnalyze?.(p.path);
+      if(!a?.success){status('ERROR: '+(a?.error||'Pack Builder analysis failed'));builderProgress(0,'ERROR');return;}
+      builderSession=a.sessionId;renderBuilder(a);
+    }catch(e){status('ERROR: '+e.message);builderProgress(0,'ERROR');}
+  }
   async function refreshCloud(force=false){
     const r=await window.electronAPI?.instrumentCloudCatalog?.(force);
     if(!r?.success){$('#im-cloud-mode').textContent='ERROR';$('#im-cloud-list').innerHTML='<div class="im-status">'+esc(r?.error||'Cloud catalog unavailable')+'</div>';return;}
@@ -48,6 +95,30 @@ export function mountInstrumentManager(){
     root.querySelectorAll('[data-remove]').forEach(x=>x.onclick=async()=>{status('RUNNING: removing '+x.dataset.remove);const r=await window.electronAPI?.removeInstrumentPack?.(x.dataset.remove);if(!r?.success){status('ERROR: '+r?.error);return;}for(const t of ['bass','drums'])if(localStorage.getItem('hd_instrument_'+t)===x.dataset.remove)localStorage.removeItem('hd_instrument_'+t);status('DONE: pack removed');refresh();});
     window.__instrumentSelection={bass:localStorage.getItem('hd_instrument_bass'),drums:localStorage.getItem('hd_instrument_drums')};
   }
+  $('#im-build-folder').onclick=()=>startBuilder('folder');
+  $('#im-build-zip').onclick=()=>startBuilder('zip');
+  $('#im-builder-cancel').onclick=async()=>{
+    if(builderSession)await window.electronAPI?.instrumentPackBuilderDiscard?.(builderSession);
+    builderSession=null;builderAnalysis=null;$('#im-builder').style.display='none';builderProgress(0,'IDLE');
+  };
+  $('#im-builder-create').onclick=async()=>{
+    if(!builderSession){status('ERROR: Analyze a sample source first');return;}
+    const b=$('#im-builder-create');b.disabled=true;
+    try{
+      builderProgress(60,'BUILDING PACK');
+      const type=$('#im-builder-type').value;
+      const options={sessionId:builderSession,name:$('#im-builder-name').value.trim(),type,license:$('#im-builder-license').value.trim(),
+        mapping:{kick:$('#im-builder-kick').value,snare:$('#im-builder-snare').value,hat:$('#im-builder-hat').value,bass:$('#im-builder-bassfile').value,rootMidi:Number($('#im-builder-root').value)||36},
+        rootMidi:Number($('#im-builder-root').value)||36};
+      builderProgress(80,'VALIDATING');
+      const r=await window.electronAPI?.instrumentPackBuilderBuild?.(options);
+      if(!r?.success){status('ERROR: '+(r?.error||'Build failed'));builderProgress(0,'ERROR');return;}
+      builderProgress(100,'DONE');
+      status('DONE: '+(r.pack?.name||'instrument pack')+' built + installed');
+      await refresh();
+    }catch(e){status('ERROR: '+e.message);builderProgress(0,'ERROR');}
+    finally{b.disabled=false;}
+  };
   $('#im-cloud-refresh').onclick=async()=>{status('RUNNING: refreshing cloud catalog');await refreshCloud(true);status('DONE: cloud catalog refreshed');};
   $('#im-starter').onclick=async()=>{status('RUNNING: installing starter packs');const r=await window.electronAPI?.installStarterInstruments?.();if(!r?.success){status('ERROR: '+r?.error);return;}status('DONE: starter packs installed');await refresh();};
   $('#im-local').onclick=async()=>{const p=await window.electronAPI?.selectInstrumentPackZip?.();if(!p?.path)return;status('RUNNING: installing local ZIP');const r=await window.electronAPI?.installInstrumentFromZip?.(p.path);if(!r?.success){status('ERROR: '+r?.error);return;}status('DONE: '+(r.pack?.name||'pack')+' installed');await refresh();};

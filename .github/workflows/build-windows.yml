@@ -136,8 +136,8 @@ jobs:
           $tag = "v3.1.0"
           $exe = Get-ChildItem app/release/*.exe | Select-Object -First 1
           if (-not $exe) { throw "Portable EXE not found" }
-          gh release view $tag 2>$null
+          gh release view $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "HumanDetect v3.1.0" --notes "Portable Windows build for HumanDetect v3.1.0 Instrument Cloud Catalog."
+            gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.1.0" --notes "Portable Windows build for HumanDetect v3.1.0 Instrument Cloud Catalog."
           }
-          gh release upload $tag "$($exe.FullName)#HumanDetect_3.1.0.exe" --clobber
+          gh release upload $tag "$($exe.FullName)#HumanDetect_3.1.0.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber

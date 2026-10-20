@@ -18,8 +18,29 @@ if 'HUMANDETECT_REPERF_ENGINE_V250' not in mt:
 function reperfDir(){ return path.join(app.getPath('userData'),'reperformance_engine'); }
 function reperfPy(){ return path.join(reperfDir(),'.venv','Scripts','python.exe'); }
 function reperfScript(){ return path.join(reperfDir(),'bass_notes.py'); }
+function ensureReperfBassScript(){
+  const script=[
+    'import json,sys',
+    'from basic_pitch.inference import predict',
+    'from basic_pitch import ICASSP_2022_MODEL_PATH',
+    'path=sys.argv[1]',
+    '_,_,notes=predict(path,ICASSP_2022_MODEL_PATH)',
+    'out=[]',
+    'for n in notes:',
+    '    try:',
+    '        st,en,pitch,amp,*rest=n',
+    "        out.append({'start':float(st),'end':float(en),'pitch':int(pitch),'amp':float(amp)})",
+    '    except Exception:',
+    '        pass',
+    'print(json.dumps(out))'
+  ].join('\n')+'\n';
+  fs.mkdirSync(reperfDir(),{recursive:true});
+  fs.writeFileSync(reperfScript(),script,'utf8');
+  return reperfScript();
+}
 function reperfStatusSync(){
   const py=reperfPy(),dir=reperfDir();
+  try{ ensureReperfBassScript(); }catch(_){};
   if(!fs.existsSync(py)) return {available:false,reason:'Re-Performance engine not installed',dir};
   try{
     const r=spawnSync(py,['-c','import numpy,onnxruntime,basic_pitch; print("ok")'],{cwd:dir,encoding:'utf8',windowsHide:true});
@@ -53,8 +74,7 @@ ipcMain.handle('reperf-setup',async()=>{
     r=await runProcess(py,['-m','pip','install','--no-cache-dir','--no-deps','basic-pitch==0.4.0'],{cwd:dir});
     if(r.code!==0)return {success:false,error:'Basic Pitch install failed: '+(r.err||r.out).slice(-3000)};
 
-    const script="import json,sys\\nfrom basic_pitch.inference import predict\\nfrom basic_pitch import ICASSP_2022_MODEL_PATH\\npath=sys.argv[1]\\n_,_,notes=predict(path,ICASSP_2022_MODEL_PATH)\\nout=[]\\nfor n in notes:\\n    try:\\n        st,en,pitch,amp,*rest=n\\n        out.append({'start':float(st),'end':float(en),'pitch':int(pitch),'amp':float(amp)})\\n    except Exception:\\n        pass\\nprint(json.dumps(out))\\n";
-    fs.writeFileSync(reperfScript(),script,'utf8');
+    ensureReperfBassScript();
     const s=reperfStatusSync();
     return s.available?{success:true,dir:s.dir}:{success:false,error:s.reason||'Verification failed'};
   }catch(e){return {success:false,error:e.message};}
@@ -65,6 +85,7 @@ ipcMain.handle('reperf-bass-notes',async(event,inputPath)=>{
     if(!inputPath||!fs.existsSync(inputPath))return {success:false,error:'Bass stem not found'};
     const s=reperfStatusSync();
     if(!s.available)return {success:false,error:(s.reason||'Re-Performance engine unavailable')+'. Click Setup Re-Performance first.'};
+    ensureReperfBassScript();
     const r=await runProcess(s.python,[reperfScript(),inputPath],{cwd:s.dir});
     if(r.code!==0)return {success:false,error:(r.err||r.out).slice(-4000)};
     const lines=(r.out||'').trim().split(/\r?\n/).filter(Boolean);

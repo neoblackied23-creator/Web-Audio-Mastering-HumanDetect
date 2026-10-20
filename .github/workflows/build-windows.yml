@@ -77,6 +77,7 @@ jobs:
           Copy-Item overlay/patch/patch_v310.py app/patch_v310.py
           Copy-Item overlay/patch/patch_v320.py app/patch_v320.py
           Copy-Item overlay/patch/patch_v321.py app/patch_v321.py
+          Copy-Item overlay/patch/patch_v322.py app/patch_v322.py
 
       - name: Apply integration patches
         working-directory: app
@@ -110,6 +111,7 @@ jobs:
           python patch_v310.py
           python patch_v320.py
           python patch_v321.py
+          python patch_v322.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -137,11 +139,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v3.2.1"
+          $tag = "v3.2.2"
           $exe = Get-ChildItem app/release/*.exe | Select-Object -First 1
           if (-not $exe) { throw "Portable EXE not found" }
           gh release view $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.2.1" --notes "Portable Windows build for HumanDetect v3.2.1 Demucs WAV backend hotfix."
+            gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.2.2" --notes "Portable Windows build for HumanDetect v3.2.2 Basic Pitch newline hotfix."
           }
-          gh release upload $tag "$($exe.FullName)#HumanDetect_3.2.1.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber
+          gh release upload $tag "$($exe.FullName)#HumanDetect_3.2.2.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber

@@ -144,6 +144,18 @@ jobs:
           if (-not $exe) { throw "Portable EXE not found" }
           gh release view $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.2.2" --notes "Portable Windows build for HumanDetect v3.2.2 Basic Pitch newline hotfix."
+            $created = $false
+            for ($i=1; $i -le 5; $i++) {
+              gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.2.2" --notes "Portable Windows build for HumanDetect v3.2.2 Basic Pitch newline hotfix."
+              if ($LASTEXITCODE -eq 0) { $created = $true; break }
+              Start-Sleep -Seconds (10 * $i)
+            }
+            if (-not $created) { throw "Failed to create GitHub release after retries" }
           }
-          gh release upload $tag "$($exe.FullName)#HumanDetect_3.2.2.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber
+          $uploaded = $false
+          for ($i=1; $i -le 5; $i++) {
+            gh release upload $tag "$($exe.FullName)#HumanDetect_3.2.2.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber
+            if ($LASTEXITCODE -eq 0) { $uploaded = $true; break }
+            Start-Sleep -Seconds (10 * $i)
+          }
+          if (-not $uploaded) { throw "Failed to upload EXE after retries" }

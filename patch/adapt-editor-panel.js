@@ -47,13 +47,13 @@ function processLayer(buf,type,cfg,amount){
   out=applyHumanizeBoost(out,cfg.human,{cleanup:true});
   return out;
 }
-function buildAdaptedMix(stems,enabled,style,amount){
+function buildAdaptedMix(stems,enabled,style,amount,replacements={}){
   const ref=stems.vocals||stems.other||stems.bass||stems.drums;if(!ref)return null;
   const cfg=styleCfg(style),out=makeLike(ref);
   if(stems.vocals)mixInto(out,stems.vocals);
   if(stems.other)mixInto(out,enabled.other?processLayer(stems.other,'other',cfg,amount):stems.other);
-  if(stems.bass)mixInto(out,enabled.bass?processLayer(stems.bass,'bass',cfg,amount):stems.bass);
-  if(stems.drums)mixInto(out,enabled.drums?processLayer(stems.drums,'drums',cfg,amount):stems.drums);
+  if(stems.bass){const b=replacements.bass||stems.bass;mixInto(out,enabled.bass?processLayer(b,'bass',cfg,amount):b);}
+  if(stems.drums){const d=replacements.drums||stems.drums;mixInto(out,enabled.drums?processLayer(d,'drums',cfg,amount):d);}
   return normalize(out);
 }
 function spliceRegion(base,replacement,start,end,fadeSec=.035){
@@ -99,6 +99,8 @@ export function mountAdaptEditor(opts={}){
     <label>Style <select id="ae-style"><option value="natural">Natural / Live</option><option value="upbeat">Upbeat / Energetic</option><option value="warm">Warm / Organic</option><option value="cinematic">Epic / Cinematic</option></select></label>
     <label>Strength <input id="ae-strength" type="range" min="25" max="100" value="70"></label>
     <span id="ae-strength-v">70%</span>
+    <label><input id="ae-rebuild-bass" type="checkbox"> Rebuild Bass Notes</label>
+    <label><input id="ae-rebuild-drums" type="checkbox"> Rebuild Drums</label>
   </div>
   <div class="ae-timeline">
     <div class="ae-scale"><span>0:00</span><span id="ae-mid">—</span><span id="ae-end">—</span></div>
@@ -213,10 +215,19 @@ export function mountAdaptEditor(opts={}){
   $('#ae-strength').oninput=()=>{$('#ae-strength-v').textContent=$('#ae-strength').value+'%';};
   $('#ae-reset').onclick=()=>{selStart=0;selEnd=duration;updateRange();};
   $('#ae-stems').onclick=async()=>{try{$('#ae-status').textContent='Preparing stems…';let api=window.__stemLabAPI;if(!api)throw new Error('Stem Lab is not ready');const s=getStems();if(!s.vocals||!s.other||!s.bass||!s.drums)await api.separate();await refreshSource();selStart=0;selEnd=duration;updateRange();$('#ae-status').textContent='4 stems ready • drag timeline to choose a section.';}catch(e){$('#ae-status').textContent='ERROR: '+e.message;}};
-  function build(){
+  async function build(){
     const stems=getStems();if(!stems.vocals||!stems.other||!stems.bass||!stems.drums)throw new Error('Prepare Stems first');
-    const amount=Number($('#ae-strength').value),style=$('#ae-style').value;
-    lastAdapted=buildAdaptedMix(stems,enabled(),style,amount);if(!lastAdapted)throw new Error('Could not build adapted mix');
+    const amount=Number($('#ae-strength').value),style=$('#ae-style').value,replacements={};
+    const rp=window.__reperformanceAPI;
+    if($('#ae-rebuild-bass').checked){
+      if(!rp)throw new Error('Re-Performance engine is not ready');
+      $('#ae-status').textContent='Rebuilding bass notes…';await rp.buildBass();replacements.bass=rp.getBassOutput?.()||null;
+    }
+    if($('#ae-rebuild-drums').checked){
+      if(!rp)throw new Error('Re-Performance engine is not ready');
+      $('#ae-status').textContent='Rebuilding drum performance…';await rp.buildDrums();replacements.drums=rp.getDrumOutput?.()||null;
+    }
+    lastAdapted=buildAdaptedMix(stems,enabled(),style,amount,replacements);if(!lastAdapted)throw new Error('Could not build adapted mix');
     return lastAdapted;
   }
   function stopPreview(){try{previewSrc?.stop()}catch(_){}try{previewCtx?.close()}catch(_){}previewSrc=null;previewCtx=null;}
@@ -226,11 +237,11 @@ export function mountAdaptEditor(opts={}){
     previewSrc.start(0,selStart,Math.max(.05,selEnd-selStart));previewSrc.onended=()=>{try{previewCtx?.close()}catch(_){}previewCtx=null;previewSrc=null;};
   }
   $('#ae-preview-a').onclick=async()=>{try{const src=await getSource();await preview(src);$('#ae-status').textContent='Previewing original selected range.';}catch(e){$('#ae-status').textContent='ERROR: '+e.message;}};
-  $('#ae-preview-b').onclick=async()=>{try{const b=build();await preview(b);$('#ae-status').textContent='Previewing adapted selected range • '+score(b).toFixed(1)+'% full-mix score.';}catch(e){$('#ae-status').textContent='ERROR: '+e.message;}};
+  $('#ae-preview-b').onclick=async()=>{try{const b=await build();await preview(b);$('#ae-status').textContent='Previewing adapted selected range • '+score(b).toFixed(1)+'% full-mix score.';}catch(e){$('#ae-status').textContent='ERROR: '+e.message;}};
   $('#ae-stop').onclick=()=>{stopPreview();$('#ae-status').textContent='Preview stopped.';};
   $('#ae-apply').onclick=async()=>{const btn=$('#ae-apply');btn.disabled=true;try{
     let src=await getSource();if(!src)throw new Error('Load a track first');if(!(selEnd>selStart)){selStart=0;selEnd=duration||src.duration;}
-    const adapted=build(),before=score(src);lastOutput=spliceRegion(src,adapted,selStart,selEnd);
+    const adapted=await build(),before=score(src);lastOutput=spliceRegion(src,adapted,selStart,selEnd);
     await opts.commitSource?.(lastOutput);window.__adaptEditorSource=lastOutput;const after=score(lastOutput);
     $('#ae-status').innerHTML=`Applied <b>${formatTime(selStart)}–${formatTime(selEnd)}</b> • <span class="ae-score">D1 ${before.toFixed(1)}% → ${after.toFixed(1)}%</span> • current source updated.`;
     resizeDraw();

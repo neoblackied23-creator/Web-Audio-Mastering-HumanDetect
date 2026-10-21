@@ -40,6 +40,7 @@ jobs:
           Copy-Item overlay/patch/stem-engine.js app/web/human-detect/stem-engine.js
           Copy-Item overlay/patch/stem-lab-panel.js app/web/human-detect/stem-lab-panel.js
           Copy-Item overlay/patch/reperformance-panel.js app/web/human-detect/reperformance-panel.js
+          Copy-Item overlay/patch/adapt-editor-panel.js app/web/human-detect/adapt-editor-panel.js
           Copy-Item overlay/patch/instrument-manager-panel.js app/web/human-detect/instrument-manager-panel.js
           Copy-Item overlay/patch/smart-pipeline-panel.js app/web/human-detect/smart-pipeline-panel.js
           Copy-Item overlay/patch/mastering-station-panel.js app/web/human-detect/mastering-station-panel.js
@@ -80,6 +81,7 @@ jobs:
           Copy-Item overlay/patch/patch_v322.py app/patch_v322.py
           Copy-Item overlay/patch/patch_v323.py app/patch_v323.py
           Copy-Item overlay/patch/patch_v324.py app/patch_v324.py
+          Copy-Item overlay/patch/patch_v330.py app/patch_v330.py
 
       - name: Apply integration patches
         working-directory: app
@@ -116,6 +118,7 @@ jobs:
           python patch_v322.py
           python patch_v323.py
           python patch_v324.py
+          python patch_v330.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -143,14 +146,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v3.2.4"
+          $tag = "v3.3.0"
           $exe = Get-ChildItem app/release/*.exe | Select-Object -First 1
           if (-not $exe) { throw "Portable EXE not found" }
           gh release view $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect 2>$null
           if ($LASTEXITCODE -ne 0) {
             $created = $false
             for ($i=1; $i -le 5; $i++) {
-              gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.2.4" --notes "Portable Windows build for HumanDetect v3.2.4 Adapt Music selective-stem mode."
+              gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.3.0" --notes "Portable Windows build for HumanDetect v3.3.0 inline Adapt Editor."
               if ($LASTEXITCODE -eq 0) { $created = $true; break }
               Start-Sleep -Seconds (10 * $i)
             }
@@ -158,7 +161,7 @@ jobs:
           }
           $uploaded = $false
           for ($i=1; $i -le 5; $i++) {
-            gh release upload $tag "$($exe.FullName)#HumanDetect_3.2.4.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber
+            gh release upload $tag "$($exe.FullName)#HumanDetect_3.3.0.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber
             if ($LASTEXITCODE -eq 0) { $uploaded = $true; break }
             Start-Sleep -Seconds (10 * $i)
           }

@@ -1,5 +1,33 @@
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function countWords(s){return (String(s||'').trim().match(/\S+/g)||[]).length;}
+function heuristicGenre(text){
+  const s=String(text||'').toLowerCase();
+  const scores={
+    'Pop':0,'Rock':0,'EDM / Dance':0,'R&B / Soul':0,'Hip-Hop / Rap':0,'Country / Folk':0,'Indie / Alternative':0,'Ballad':0
+  };
+  const add=(g,words,w=1)=>{for(const x of words)if(s.includes(x))scores[g]+=w;};
+  add('Pop',['love','tonight','baby','heart','dance','forever','feel','you and me'],1);
+  add('Rock',['fire','fight','wild','break','blood','storm','road','scream','burn'],1.2);
+  add('EDM / Dance',['drop','bass','club','party','beat','move','dancefloor','neon','hands up'],1.5);
+  add('R&B / Soul',['touch','slow','body','late night','desire','baby','skin','hold me','closer'],1.2);
+  add('Hip-Hop / Rap',['money','city','street','grind','flow','bars','crew','real one','hustle'],1.4);
+  add('Country / Folk',['road','home','truck','river','small town','whiskey','porch','fields','mama'],1.5);
+  add('Indie / Alternative',['static','empty room','ghost','window','cold light','polaroid','silence','subway'],1.2);
+  add('Ballad',['goodbye','tears','memory','miss you','alone','broken','remember','sorry'],1.4);
+  const lines=s.split(/\r?\n/).filter(x=>x.trim());
+  const avg=lines.length?lines.reduce((a,l)=>a+countWords(l),0)/lines.length:0;
+  if(avg>10)scores['Hip-Hop / Rap']+=1.2;
+  if(avg<7)scores['Pop']+=.6;
+  const ranked=Object.entries(scores).sort((a,b)=>b[1]-a[1]);
+  const genre=ranked[0][1]>0?ranked[0][0]:'Pop';
+  const subgenre={
+    'Pop':'Contemporary Pop','Rock':'Alternative Rock','EDM / Dance':'Dance Pop / EDM','R&B / Soul':'Contemporary R&B',
+    'Hip-Hop / Rap':'Melodic Rap','Country / Folk':'Modern Folk / Country','Indie / Alternative':'Indie Pop / Alternative','Ballad':'Pop Ballad'
+  }[genre];
+  const mood=s.match(/sad|tears|alone|broken|goodbye/)?'Melancholic':s.match(/dance|party|move|higher|alive/)?'Energetic':s.match(/love|closer|touch|heart/)?'Romantic':'Reflective';
+  return {genre,subgenre,mood,scores};
+}
+
 function heuristicLyricAnalysis(text){
   const t=String(text||'').trim(),lines=t.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
   if(!t)return {score:0,flags:[]};
@@ -30,8 +58,8 @@ export function mountLyricLabPanel(opts={}){
     <div class="ll-status">API key is sent only when you press an AI action and is not written into the project source.</div>
   </div>
   <div class="ll-grid">
-    <div class="ll-card"><b>Original / Pasted Lyrics</b><textarea id="ll-original" placeholder="Extract from audio, paste lyrics from Mureka/Treblo/Suno/etc., or type manually..."></textarea><div class="ll-row"><button class="ll-btn" id="ll-local-analyze">Analyze Style</button><button class="ll-btn" id="ll-ai-analyze">AI Review</button><span id="ll-source-mode" class="ll-status">Source: manual / none</span></div><div class="ll-score" id="ll-score">AI-style indicators: —</div><div class="ll-flags" id="ll-flags"></div></div>
-    <div class="ll-card"><b>Polished / Natural Version</b><textarea id="ll-output" placeholder="Suggested rewrite appears here..."></textarea><div class="ll-row"><button class="ll-btn main" id="ll-polish">Polish / Humanize</button><button class="ll-btn" id="ll-suggest">Suggest Improvements</button><button class="ll-btn" id="ll-copy">Copy Result</button></div><div class="ll-status" id="ll-ai-note">Preserves meaning, section structure, rhyme intent, and singability unless you request larger changes.</div></div>
+    <div class="ll-card"><b>Original / Pasted Lyrics</b><textarea id="ll-original" placeholder="Extract from audio, paste lyrics from Mureka/Treblo/Suno/etc., or type manually..."></textarea><div class="ll-row"><button class="ll-btn" id="ll-local-analyze">Analyze Style</button><button class="ll-btn" id="ll-ai-analyze">AI Review</button><span id="ll-source-mode" class="ll-status">Source: manual / none</span></div><div class="ll-score" id="ll-score">AI-style indicators: —</div><div class="ll-row"><b>Detected Genre:</b><span id="ll-genre">—</span><b>Subgenre:</b><span id="ll-subgenre">—</span><b>Mood:</b><span id="ll-mood">—</span></div><div class="ll-flags" id="ll-flags"></div></div>
+    <div class="ll-card"><b>Polished / Natural Version</b><textarea id="ll-output" placeholder="Suggested rewrite appears here..."></textarea><div class="ll-row"><button class="ll-btn main" id="ll-polish">Polish / Humanize</button><button class="ll-btn" id="ll-suggest">Suggest Improvements</button><button class="ll-btn" id="ll-suggest-genre">Suggest by Genre</button><button class="ll-btn" id="ll-copy">Copy Result</button></div><div class="ll-status" id="ll-ai-note">Preserves meaning, section structure, rhyme intent, and singability unless you request larger changes.</div></div>
   </div>
   <div class="ll-status" id="ll-status">Ready. AI-style score is a writing-style heuristic, not proof of authorship.</div>`;
   document.body.appendChild(root);
@@ -59,7 +87,7 @@ export function mountLyricLabPanel(opts={}){
     $('#ll-original').value=r.text||'';$('#ll-source-mode').textContent='Source: extracted from audio';status('Lyrics extracted • '+(r.language||'auto')+' • '+(r.segments?.length||0)+' segments.');
     $('#ll-local-analyze').click();
   }catch(e){status('Extract failed: '+e.message);}finally{b.disabled=false;}};
-  $('#ll-local-analyze').onclick=()=>{const r=heuristicLyricAnalysis($('#ll-original').value);$('#ll-score').textContent='AI-style indicators: '+r.score+'/100';$('#ll-flags').innerHTML=r.flags.length?r.flags.map(x=>'• '+esc(x)).join('<br>'):'No strong repetitive/generic style flags found.';};
+  $('#ll-local-analyze').onclick=()=>{const txt=$('#ll-original').value,r=heuristicLyricAnalysis(txt),g=heuristicGenre(txt);$('#ll-score').textContent='AI-style indicators: '+r.score+'/100';$('#ll-genre').textContent=g.genre;$('#ll-subgenre').textContent=g.subgenre;$('#ll-mood').textContent=g.mood;$('#ll-flags').innerHTML=r.flags.length?r.flags.map(x=>'• '+esc(x)).join('<br>'):'No strong repetitive/generic style flags found.';window.__lyricGenre=g;};
   function payload(action){
     return {provider:$('#ll-provider').value,model:$('#ll-model').value.trim(),apiKey:$('#ll-key').value.trim(),url:$('#ll-url').value.trim(),action,text:$('#ll-original').value};
   }
@@ -70,6 +98,14 @@ export function mountLyricLabPanel(opts={}){
   $('#ll-ai-analyze').onclick=async()=>{try{status('AI reviewing lyric style…');$('#ll-ai-note').textContent=await ai('analyze');status('AI review complete.');}catch(e){status('AI review failed: '+e.message);}};
   $('#ll-polish').onclick=async()=>{try{status('Polishing lyrics…');$('#ll-output').value=await ai('polish');status('Polished version ready. Review before using.');}catch(e){status('Polish failed: '+e.message);}};
   $('#ll-suggest').onclick=async()=>{try{status('Generating lyric suggestions…');$('#ll-output').value=await ai('suggest');status('Suggestions ready.');}catch(e){status('Suggestion failed: '+e.message);}};
+  $('#ll-suggest-genre').onclick=async()=>{try{
+    const txt=$('#ll-original').value;if(!txt.trim())throw new Error('Lyrics are empty');
+    const g=window.__lyricGenre||heuristicGenre(txt);window.__lyricGenre=g;
+    status('Generating genre-aware lyric improvements for '+g.genre+'…');
+    const p=payload('genre_suggest');p.genre=g.genre;p.subgenre=g.subgenre;p.mood=g.mood;
+    const r=await window.electronAPI?.lyricAi?.(p);if(!r?.success)throw new Error(r?.error||'AI request failed');
+    $('#ll-output').value=r.text||'';status('Genre-aware suggestions ready for '+g.genre+' / '+g.subgenre+'.');
+  }catch(e){status('Genre suggestion failed: '+e.message);}};
   $('#ll-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#ll-output').value);status('Result copied.');}catch(e){status('Copy failed: '+e.message);}};
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';check();};$('.ll-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};
 }

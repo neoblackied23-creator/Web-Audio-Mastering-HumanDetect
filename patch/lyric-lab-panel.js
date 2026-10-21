@@ -23,14 +23,14 @@ export function mountLyricLabPanel(opts={}){
   const toggle=document.createElement('button');toggle.className='ll-toggle';toggle.textContent='Lyric Lab';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='ll-panel';
   root.innerHTML=`<div class="ll-head"><div><b>Lyric Lab</b><div class="ll-status">v3.7 • transcription + lyric naturalness analysis + AI-assisted polish</div></div><button class="ll-close">×</button></div>
-  <div class="ll-row"><button class="ll-btn" id="ll-check">Check Transcriber</button><button class="ll-btn" id="ll-setup">Install/Update Whisper</button><button class="ll-btn main" id="ll-extract">EXTRACT LYRICS</button><label><input id="ll-use-vocals" type="checkbox" checked> Prefer vocals stem</label><label>Language <input id="ll-lang" value="auto" style="width:62px"></label></div>
+  <div class="ll-row"><button class="ll-btn" id="ll-check">Check Transcriber</button><button class="ll-btn" id="ll-setup">Install/Update Whisper</button><button class="ll-btn main" id="ll-extract">EXTRACT LYRICS</button><button class="ll-btn" id="ll-paste">PASTE LYRICS</button><button class="ll-btn" id="ll-clear">Clear</button><label><input id="ll-use-vocals" type="checkbox" checked> Prefer vocals stem</label><label>Language <input id="ll-lang" value="auto" style="width:62px"></label></div>
   <div class="ll-provider">
     <div class="ll-row"><label>AI Provider <select id="ll-provider"><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="claude">Claude</option><option value="openrouter">OpenRouter</option><option value="groq">Groq</option><option value="custom">MUSE/Muze / Custom OpenAI-compatible</option></select></label><label>Model <input id="ll-model" value="gemini-2.5-flash" style="width:180px"></label></div>
     <div class="ll-row"><label>API Key <input id="ll-key" type="password" placeholder="session only" style="width:250px"></label><label>Custom URL <input id="ll-url" placeholder="https://.../v1/chat/completions" style="width:290px"></label></div>
     <div class="ll-status">API key is sent only when you press an AI action and is not written into the project source.</div>
   </div>
   <div class="ll-grid">
-    <div class="ll-card"><b>Extracted / Original Lyrics</b><textarea id="ll-original" placeholder="Extract from audio or paste lyrics here..."></textarea><div class="ll-row"><button class="ll-btn" id="ll-local-analyze">Analyze Style</button><button class="ll-btn" id="ll-ai-analyze">AI Review</button></div><div class="ll-score" id="ll-score">AI-style indicators: —</div><div class="ll-flags" id="ll-flags"></div></div>
+    <div class="ll-card"><b>Original / Pasted Lyrics</b><textarea id="ll-original" placeholder="Extract from audio, paste lyrics from Mureka/Treblo/Suno/etc., or type manually..."></textarea><div class="ll-row"><button class="ll-btn" id="ll-local-analyze">Analyze Style</button><button class="ll-btn" id="ll-ai-analyze">AI Review</button><span id="ll-source-mode" class="ll-status">Source: manual / none</span></div><div class="ll-score" id="ll-score">AI-style indicators: —</div><div class="ll-flags" id="ll-flags"></div></div>
     <div class="ll-card"><b>Polished / Natural Version</b><textarea id="ll-output" placeholder="Suggested rewrite appears here..."></textarea><div class="ll-row"><button class="ll-btn main" id="ll-polish">Polish / Humanize</button><button class="ll-btn" id="ll-suggest">Suggest Improvements</button><button class="ll-btn" id="ll-copy">Copy Result</button></div><div class="ll-status" id="ll-ai-note">Preserves meaning, section structure, rhyme intent, and singability unless you request larger changes.</div></div>
   </div>
   <div class="ll-status" id="ll-status">Ready. AI-style score is a writing-style heuristic, not proof of authorship.</div>`;
@@ -39,13 +39,24 @@ export function mountLyricLabPanel(opts={}){
   const defaults={gemini:'gemini-2.5-flash',openai:'gpt-5-mini',claude:'claude-sonnet-4-5',openrouter:'openai/gpt-5-mini',groq:'llama-3.3-70b-versatile',custom:''};
   $('#ll-provider').onchange=()=>{$('#ll-model').value=defaults[$('#ll-provider').value]||'';};
   async function check(){const r=await window.electronAPI?.lyricTranscriberStatus?.();status(r?.available?'Whisper transcriber ready.':'Whisper transcriber not installed.');return r;}
+  $('#ll-paste').onclick=async()=>{try{
+    const txt=await navigator.clipboard.readText();
+    if(!txt.trim())throw new Error('Clipboard does not contain text');
+    $('#ll-original').value=txt;
+    $('#ll-source-mode').textContent='Source: pasted lyrics';
+    status('Lyrics pasted. Ready for Analyze Style or Polish / Humanize.');
+    $('#ll-local-analyze').click();
+  }catch(e){status('Paste failed: '+e.message+' You can also paste directly into the Original / Pasted Lyrics box.');}};
+  $('#ll-clear').onclick=()=>{
+    $('#ll-original').value='';$('#ll-output').value='';$('#ll-score').textContent='AI-style indicators: —';$('#ll-flags').textContent='';$('#ll-source-mode').textContent='Source: manual / none';status('Lyric fields cleared.');
+  };
   $('#ll-check').onclick=check;
   $('#ll-setup').onclick=async()=>{const b=$('#ll-setup');b.disabled=true;try{status('Installing faster-whisper locally…');const r=await window.electronAPI?.lyricTranscriberSetup?.();if(!r?.success)throw new Error(r?.error||'setup failed');status('Whisper transcriber ready.');}catch(e){status('Setup failed: '+e.message);}finally{b.disabled=false;}};
   $('#ll-extract').onclick=async()=>{const b=$('#ll-extract');b.disabled=true;try{
     let p=null;if($('#ll-use-vocals').checked)p=await opts.getVocalsPath?.();if(!p)p=await opts.getOriginalPath?.();if(!p)throw new Error('Load a song first');
     status('Transcribing lyrics… first model download may take time.');
     const lang=$('#ll-lang').value.trim();const r=await window.electronAPI?.lyricTranscribe?.(p,lang==='auto'?null:lang);if(!r?.success)throw new Error(r?.error||'transcription failed');
-    $('#ll-original').value=r.text||'';status('Lyrics extracted • '+(r.language||'auto')+' • '+(r.segments?.length||0)+' segments.');
+    $('#ll-original').value=r.text||'';$('#ll-source-mode').textContent='Source: extracted from audio';status('Lyrics extracted • '+(r.language||'auto')+' • '+(r.segments?.length||0)+' segments.');
     $('#ll-local-analyze').click();
   }catch(e){status('Extract failed: '+e.message);}finally{b.disabled=false;}};
   $('#ll-local-analyze').onclick=()=>{const r=heuristicLyricAnalysis($('#ll-original').value);$('#ll-score').textContent='AI-style indicators: '+r.score+'/100';$('#ll-flags').innerHTML=r.flags.length?r.flags.map(x=>'• '+esc(x)).join('<br>'):'No strong repetitive/generic style flags found.';};

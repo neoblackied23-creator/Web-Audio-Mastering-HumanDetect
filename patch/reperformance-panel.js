@@ -1,4 +1,6 @@
 import { analyzeAudioBuffer } from './human-detector-core.js';
+import { applyHumanizeBoost } from './humanize-boost.js';
+import { applyVirtualPerformance } from './virtual-performance.js';
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function makeBufferLike(ref){return new AudioBuffer({numberOfChannels:ref.numberOfChannels,length:ref.length,sampleRate:ref.sampleRate});}
@@ -165,9 +167,10 @@ export function mountReperformancePanel(opts={}){
   document.head.appendChild(style);
   const toggle=document.createElement('button');toggle.className='rp-toggle';toggle.textContent='Re-Performance';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='rp-panel';
-  root.innerHTML=`<div class="rp-head"><div><b>Re-Performance Lab</b><div class="rp-status">v2.7 • Auto Instrument Selection + Basic Pitch + virtual instruments</div></div><button class="rp-close">×</button></div>
+  root.innerHTML=`<div class="rp-head"><div><b>Re-Performance Lab</b><div class="rp-status">v2.9 • Adapt Music + Adaptive Re-Performance + Basic Pitch</div></div><button class="rp-close">×</button></div>
   <div class="rp-row"><button class="rp-btn" id="rp-check">Check Engine</button><button class="rp-btn" id="rp-setup">Setup Re-Performance</button><span id="rp-engine" class="rp-status">checking…</span></div>
   <div class="rp-card" style="margin-top:10px"><b>Auto Instrument Selection</b><div id="rp-profile" class="rp-status">Profile: not analyzed</div><div class="rp-row"><button class="rp-btn" id="rp-autoselect">Auto Select</button><button class="rp-btn main" id="rp-auto">AUTO RE-PERFORMANCE</button></div></div>
+  <div class="rp-card" style="margin-top:10px"><b>Adapt Music • Selective Stem Rebuild</b><div class="rp-status">Choose which musical layers may change. Vocals stay original. Melody + Instruments currently map to the Demucs OTHER stem.</div><div class="rp-row"><label><input id="rp-adapt-melody" type="checkbox" checked> Melody</label><label><input id="rp-adapt-instruments" type="checkbox" checked> Instruments</label><label><input id="rp-adapt-bass" type="checkbox" checked> Bass</label><label><input id="rp-adapt-drums" type="checkbox" checked> Drums</label></div><div class="rp-row"><label>Style <select id="rp-adapt-style"><option value="natural">Natural / Live</option><option value="upbeat">Upbeat / Energetic</option><option value="warm">Warm / Organic</option><option value="cinematic">Epic / Cinematic</option></select></label><button class="rp-btn main" id="rp-adapt">ADAPT MUSIC • TRY 4 VERSIONS</button></div><div id="rp-adaptinfo" class="rp-status">No adapted version yet.</div></div>
   <div class="rp-grid">
     <div class="rp-card"><b>Bass Re-Performance</b><div class="rp-status">Basic Pitch converts bass stem to note events, then internal synth replays them.</div><div class="rp-field"><label>Timing Humanize <span id="rp-tv">12 ms</span></label><input id="rp-timing" type="range" min="0" max="35" value="12"></div><div class="rp-field"><label>Velocity Humanize <span id="rp-vv">8%</span></label><input id="rp-velocity" type="range" min="0" max="25" value="8"></div><div class="rp-field"><label>Bass Replace <span id="rp-bv">55%</span></label><input id="rp-bassblend" type="range" min="0" max="100" value="55"></div><button class="rp-btn" id="rp-bass">Analyze + Build Bass</button><div id="rp-bassinfo" class="rp-status">No bass analysis yet.</div></div>
     <div class="rp-card"><b>Drum Re-Performance</b><div class="rp-status">Transient/onset detector classifies kick/snare/hat and internal drum synth replays them.</div><div class="rp-field"><label>Drum Replace <span id="rp-dv">45%</span></label><input id="rp-drumblend" type="range" min="0" max="100" value="45"></div><button class="rp-btn" id="rp-drums">Analyze + Build Drums</button><div id="rp-druminfo" class="rp-status">No drum analysis yet.</div></div>
@@ -175,7 +178,7 @@ export function mountReperformancePanel(opts={}){
   <div class="rp-row"><button class="rp-btn main" id="rp-remix">Build Re-Performance Remix</button><button class="rp-btn" id="rp-use">Use as Current Source</button><span id="rp-score" class="rp-status">Before/after D1: —</span></div>
   <div id="rp-status" class="rp-status">IDLE</div><div id="rp-log" class="rp-log"></div>`;
   document.body.appendChild(root);
-  const $=s=>root.querySelector(s);let bassOut=null,drumOut=null,remix=null;
+  const $=s=>root.querySelector(s);let bassOut=null,drumOut=null,adaptedOther=null,remix=null;
   const log=t=>{const d=document.createElement('div');d.textContent='['+new Date().toLocaleTimeString()+'] '+t;$('#rp-log').appendChild(d);$('#rp-log').scrollTop=$('#rp-log').scrollHeight;};
   const status=t=>{$('#rp-status').textContent=t;log(t);};
   function stemBuffers(){return window.__stemLabStemBuffers||{}}
@@ -189,6 +192,55 @@ export function mountReperformancePanel(opts={}){
   $('#rp-bass').onclick=async()=>{try{await buildBass();}catch(e){status('ERROR: '+e.message);}};
   async function buildDrums(){const d=stemBuffers().drums;if(!d)throw new Error('Separate stems in Stem Lab first');status('RUNNING: detecting drum onsets');const hits=humanizeHits(detectOnsets(d),Number($('#rp-timing').value),Number($('#rp-velocity').value));let syn=null,source='internal synth';const pack=await loadSelectedInstrumentPack('drums');if(pack?.samplePaths){status('RUNNING: loading drum sample pack '+pack.name);const samples={};for(const type of ['kick','snare','hat'])if(pack.samplePaths[type])samples[type]=await decodeAudioFile(pack.samplePaths[type]);syn=synthDrumsFromSamples(d,hits,samples);source=pack.name;}else{syn=synthDrums(d,hits);}drumOut=blend(d,syn,Number($('#rp-drumblend').value)/100);const k=hits.filter(x=>x.type==='kick').length,s=hits.filter(x=>x.type==='snare').length,h=hits.filter(x=>x.type==='hat').length;$('#rp-druminfo').textContent=`${hits.length} hits • kick ${k} • snare ${s} • hat ${h} • ${source}`;status('DONE: virtual drums built with '+source);return true;}
   $('#rp-drums').onclick=async()=>{try{await buildDrums();}catch(e){status('ERROR: '+e.message);}};
+  function adaptConfig(style,idx){
+    const table={
+      natural:[{h:'medium',vp:'light',mix:14,room:true},{h:'strong',vp:'light',mix:18,room:true},{h:'medium',vp:'medium',mix:22,room:true},{h:'strong',vp:'medium',mix:26,room:true}],
+      upbeat:[{h:'medium',vp:'medium',mix:24,room:false},{h:'strong',vp:'medium',mix:30,room:false},{h:'medium',vp:'strong',mix:34,room:true},{h:'strong',vp:'strong',mix:40,room:true}],
+      warm:[{h:'medium',vp:'light',mix:18,room:true},{h:'strong',vp:'light',mix:22,room:true},{h:'strong',vp:'medium',mix:25,room:true},{h:'extreme',vp:'medium',mix:28,room:true}],
+      cinematic:[{h:'medium',vp:'medium',mix:20,room:true},{h:'strong',vp:'medium',mix:28,room:true},{h:'strong',vp:'strong',mix:34,room:true},{h:'extreme',vp:'strong',mix:38,room:true}]
+    };
+    return (table[style]||table.natural)[idx];
+  }
+  function makeAdaptCandidate(st,cfg,useOther,useBass,useDrums){
+    const ref=st.vocals||st.other||st.drums||st.bass,out=makeBufferLike(ref);
+    if(st.vocals)mixInto(out,st.vocals);
+    if(st.other){
+      let o=st.other;
+      if(useOther){
+        o=applyVirtualPerformance(o,{strength:cfg.vp,mix:cfg.mix,humanGroove:true,drums:false,bass:true,room:cfg.room});
+        o=applyHumanizeBoost(o,cfg.h,{cleanup:true});
+      }
+      mixInto(out,o);
+    }
+    if(useBass&&bassOut)mixInto(out,bassOut);else if(st.bass)mixInto(out,st.bass);
+    if(useDrums&&drumOut)mixInto(out,drumOut);else if(st.drums)mixInto(out,st.drums);
+    return normalize(out);
+  }
+  async function buildAdaptMusic(){
+    const st=stemBuffers(),ref=st.vocals||st.other||st.drums||st.bass;
+    if(!ref)throw new Error('Separate stems in Stem Lab first');
+    const useOther=$('#rp-adapt-melody').checked||$('#rp-adapt-instruments').checked;
+    const useBass=$('#rp-adapt-bass').checked,useDrums=$('#rp-adapt-drums').checked;
+    if(!useOther&&!useBass&&!useDrums)throw new Error('Select at least one layer to adapt');
+    const style=$('#rp-adapt-style').value;
+    status('RUNNING: Adapt Music selective stem processing');
+    if(useBass){await buildBass();await new Promise(r=>setTimeout(r,0));}
+    if(useDrums){await buildDrums();await new Promise(r=>setTimeout(r,0));}
+    let best=null;
+    for(let i=0;i<4;i++){
+      const cfg=adaptConfig(style,i),cand=makeAdaptCandidate(st,cfg,useOther,useBass,useDrums),s=score(cand);
+      status('Adapt version '+(i+1)+'/4 • '+s.toFixed(1)+'% human-like');
+      if(!best||s>best.score)best={buffer:cand,score:s,index:i+1,cfg};
+      await new Promise(r=>setTimeout(r,0));
+    }
+    remix=best.buffer;adaptedOther=useOther;
+    const before=opts.getOriginalBuffer?await Promise.resolve(opts.getOriginalBuffer()):null;
+    $('#rp-adaptinfo').textContent='Best version '+best.index+' • '+best.score.toFixed(1)+'% human-like • '+style+' • selected: '+[useOther?'melody/instruments':null,useBass?'bass':null,useDrums?'drums':null].filter(Boolean).join(', ');
+    $('#rp-score').textContent=before?('D1 before '+score(before).toFixed(1)+'% → adapted '+best.score.toFixed(1)+'%'):('D1 adapted '+best.score.toFixed(1)+'%');
+    status('DONE: Adapt Music best version ready');
+    return remix;
+  }
+  $('#rp-adapt').onclick=async()=>{const b=$('#rp-adapt');b.disabled=true;try{await buildAdaptMusic();}catch(e){status('ERROR: '+e.message);}finally{b.disabled=false;}};
   async function buildRemix(){const st=stemBuffers(),ref=st.vocals||st.other||st.drums||st.bass;if(!ref)throw new Error('Separate stems first');remix=makeBufferLike(ref);if(st.vocals)mixInto(remix,st.vocals);if(st.other)mixInto(remix,st.other);if(bassOut)mixInto(remix,bassOut);else if(st.bass)mixInto(remix,st.bass);if(drumOut)mixInto(remix,drumOut);else if(st.drums)mixInto(remix,st.drums);normalize(remix);const before=opts.getOriginalBuffer?opts.getOriginalBuffer():null;const b=await Promise.resolve(before);$('#rp-score').textContent=b?`D1 before ${score(b).toFixed(1)}% → after ${score(remix).toFixed(1)}%`:`D1 after ${score(remix).toFixed(1)}%`;status('DONE: Re-Performance remix ready');return remix;}
   $('#rp-remix').onclick=async()=>{try{await buildRemix();}catch(e){status('ERROR: '+e.message);}};
   async function autoSelectProfile(){
@@ -214,6 +266,6 @@ export function mountReperformancePanel(opts={}){
   $('#rp-auto').onclick=async()=>{const b=$('#rp-auto');b.disabled=true;try{status('RUNNING: Auto Re-Performance');await autoSelectProfile();await buildBass();await new Promise(r=>setTimeout(r,0));await buildDrums();await new Promise(r=>setTimeout(r,0));await buildRemix();status('DONE: Auto Re-Performance complete');}catch(e){status('ERROR: '+e.message);}finally{b.disabled=false;}};
   async function useCurrent(){if(!remix)throw new Error('Build Re-Performance Remix first');await opts.commitSource?.(remix);window.__reperfCurrentSource=remix;status('DONE: Re-Performance set as current source');return remix;}
   $('#rp-use').onclick=async()=>{try{await useCurrent();}catch(e){status('ERROR: '+e.message);}};
-  window.__reperformanceAPI={check,autoSelect:autoSelectProfile,buildBass,buildDrums,buildRemix,useCurrent,getRemix:()=>remix};
+  window.__reperformanceAPI={check,autoSelect:autoSelectProfile,buildBass,buildDrums,buildAdaptMusic,buildRemix,useCurrent,getRemix:()=>remix};
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';check();};$('.rp-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};check();
 }

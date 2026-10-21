@@ -93,7 +93,7 @@ export function mountAdaptEditor(opts={}){
   document.head.appendChild(style);
 
   const root=document.createElement('section');root.className='adapt-editor';
-  root.innerHTML=`<div class="ae-head"><div><b>Adapt Editor</b><div class="ae-sub">v3.3 • edit selected time range directly under the player</div></div></div>
+  root.innerHTML=`<div class="ae-head"><div><b>Adapt Editor</b><div class="ae-sub">v3.6 • Adapt Editor + Metadata + Fingerprint Inspector</div></div></div>
   <div class="ae-toolbar">
     <button class="ae-btn" id="ae-stems">Prepare Stems</button>
     <label>Style <select id="ae-style"><option value="natural">Natural / Live</option><option value="upbeat">Upbeat / Energetic</option><option value="warm">Warm / Organic</option><option value="cinematic">Epic / Cinematic</option></select></label>
@@ -111,7 +111,7 @@ export function mountAdaptEditor(opts={}){
     <button class="ae-btn" id="ae-preview-b">Preview Adapted</button>
     <button class="ae-btn" id="ae-stop">Stop Preview</button>
     <button class="ae-btn main" id="ae-apply">Apply Selected Range</button>
-    <button class="ae-btn" id="ae-reset">Reset Range</button><button class="ae-btn" id="ae-meta-toggle">Edit Metadata</button>
+    <button class="ae-btn" id="ae-reset">Reset Range</button><button class="ae-btn" id="ae-meta-toggle">Edit Metadata</button><button class="ae-btn" id="ae-fp-toggle">Fingerprint Inspector</button>
     <span class="ae-range" id="ae-range">Select a region on the timeline</span>
   </div>
   <div class="ae-meta-panel" id="ae-meta-panel">
@@ -133,6 +133,20 @@ export function mountAdaptEditor(opts={}){
       <button class="ae-btn" id="ae-meta-save-source">Write to Source</button>
     </div>
     <div class="ae-meta-note" id="ae-meta-note">MP3/WAV supported in v3.4. Save as Copy is recommended.</div>
+  </div>
+  <div class="ae-meta-panel" id="ae-fp-panel">
+    <div class="ae-meta-actions">
+      <button class="ae-btn main" id="ae-fp-run">Inspect Source Fingerprint</button>
+      <button class="ae-btn" id="ae-fp-current">Analyze Current Audio</button>
+    </div>
+    <div class="ae-meta-note" id="ae-fp-note">Read-only inspector. It does not modify or remove provenance/fingerprint data.</div>
+    <div class="ae-meta-grid" style="margin-top:8px">
+      <label>File SHA-256<input id="ae-fp-sha" type="text" readonly></label>
+      <label>Container / Size<input id="ae-fp-file" type="text" readonly></label>
+      <label>Provenance<input id="ae-fp-prov" type="text" readonly></label>
+      <label>Internal D1<input id="ae-fp-d1" type="text" readonly></label>
+      <label style="grid-column:span 2">Spectral Fingerprint<input id="ae-fp-spec" type="text" readonly></label>
+    </div>
   </div>
   <div class="ae-status" id="ae-status">Load a track, prepare stems, then drag on any lane to select the section to adapt.</div>`;
   player.appendChild(root);
@@ -194,7 +208,36 @@ export function mountAdaptEditor(opts={}){
     $('#ae-meta-composer').value=m.composer||'';$('#ae-meta-copyright').value=m.copyright||'';$('#ae-meta-comment').value=m.comment||'';
   }
   async function sourcePath(){return await opts.getOriginalPath?.()||null;}
+  function spectralFingerprint(buf){
+    if(!buf)return '';
+    const bins=24,acc=new Float64Array(bins),counts=new Uint32Array(bins),sr=buf.sampleRate;
+    const step=Math.max(1,Math.floor(buf.length/(sr*30)));
+    for(let i=0;i<buf.length;i+=step){
+      let x=0;for(let c=0;c<buf.numberOfChannels;c++)x+=buf.getChannelData(c)[i]/buf.numberOfChannels;
+      const a=Math.abs(x),slot=Math.min(bins-1,Math.floor((i/Math.max(1,buf.length))*bins));
+      acc[slot]+=a;counts[slot]++;
+    }
+    const vals=[...acc].map((v,i)=>Math.round((v/Math.max(1,counts[i]))*1e6));
+    let h=2166136261>>>0;
+    for(const v of vals){h^=v;h=Math.imul(h,16777619)>>>0;}
+    return 'SP-'+h.toString(16).padStart(8,'0')+'-'+vals.slice(0,8).map(v=>v.toString(16)).join('');
+  }
   $('#ae-meta-toggle').onclick=()=>{$('#ae-meta-panel').classList.toggle('open');};
+  $('#ae-fp-toggle').onclick=()=>{$('#ae-fp-panel').classList.toggle('open');};
+  $('#ae-fp-run').onclick=async()=>{try{
+    const p=await sourcePath();if(!p)throw new Error('Load a source file first');
+    const r=await window.electronAPI?.fingerprintInspect?.(p);if(!r?.success)throw new Error(r?.error||'Fingerprint inspection failed');
+    $('#ae-fp-sha').value=r.sha256||'';$('#ae-fp-file').value=(r.ext||'')+' • '+(r.size||0)+' bytes';
+    $('#ae-fp-prov').value=r.provenance?.strong_source||((r.provenance?.matches||[]).length?'evidence found':'none');
+    $('#ae-fp-note').textContent='Container fingerprint read successfully. Provenance is preserved and read-only.';
+  }catch(e){$('#ae-fp-note').textContent='ERROR: '+e.message;}};
+  $('#ae-fp-current').onclick=async()=>{try{
+    const b=await getSource();if(!b)throw new Error('No current audio buffer');
+    $('#ae-fp-d1').value=score(b).toFixed(1)+'% human-like';
+    $('#ae-fp-spec').value=spectralFingerprint(b);
+    $('#ae-fp-note').textContent='Current audio fingerprint analyzed. Use this to compare before/after substantive edits.';
+  }catch(e){$('#ae-fp-note').textContent='ERROR: '+e.message;}};
+
   $('#ae-meta-read').onclick=async()=>{try{
     const p=await sourcePath();if(!p)throw new Error('Load a source file first');
     const r=await window.electronAPI?.audioMetadataRead?.(p);if(!r?.success)throw new Error(r?.error||'Could not read metadata');

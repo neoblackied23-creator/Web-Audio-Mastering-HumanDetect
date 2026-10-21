@@ -7,7 +7,7 @@ export function mountInstrumentManager(){
   const toggle=document.createElement('button');toggle.className='im-toggle';toggle.textContent='Instrument Manager';document.body.appendChild(toggle);
   const root=document.createElement('section');root.className='im-panel';
   root.innerHTML=`<div class="im-head"><div><b>Instrument Manager</b><div class="im-status">v3.2 • Cloud Catalog • Pack Builder • checksum • local cache</div></div><button class="im-close">×</button></div>
-  <div class="im-row"><button class="im-btn main" id="im-starter">Install Starter Packs</button><button class="im-btn" id="im-local">Install Local ZIP</button><button class="im-btn" id="im-build-folder">Pack Builder: Folder</button><button class="im-btn" id="im-build-zip">Pack Builder: ZIP</button></div>
+  <div class="im-row"><button class="im-btn main" id="im-starter">Install Starter Packs</button><button class="im-btn" id="im-starter-extended">Install Extended Starters</button><button class="im-btn" id="im-local">Install Local ZIP</button><button class="im-btn" id="im-build-folder">Pack Builder: Folder</button><button class="im-btn" id="im-build-zip">Pack Builder: ZIP</button></div>
   <div id="im-builder" class="im-item" style="display:none;grid-template-columns:1fr">
     <div><b>Pack Builder v3.2</b><div id="im-builder-info" class="im-meta">Choose a folder or ZIP containing audio samples.</div></div>
     <div class="im-row"><label>Name <input class="im-url" id="im-builder-name" style="min-width:190px" value="Custom Instrument Pack"></label><label>Type <select id="im-builder-type"><option value="drums">Drums</option><option value="bass">Bass</option><option value="keys">Piano / Keys</option><option value="guitar">Guitar</option><option value="synth">Synth Lead</option><option value="pad">Synth Pad</option><option value="strings">Strings</option></select></label></div>
@@ -121,6 +121,7 @@ export function mountInstrumentManager(){
   };
   $('#im-cloud-refresh').onclick=async()=>{status('RUNNING: refreshing cloud catalog');await refreshCloud(true);status('DONE: cloud catalog refreshed');};
   $('#im-starter').onclick=async()=>{status('RUNNING: installing starter packs');const r=await window.electronAPI?.installStarterInstruments?.();if(!r?.success){status('ERROR: '+r?.error);return;}status('DONE: starter packs installed');await refresh();};
+  $('#im-starter-extended').onclick=async()=>{status('RUNNING: installing extended melodic starter packs');const r=await window.electronAPI?.installExtendedStarterInstruments?.();if(!r?.success){status('ERROR: '+r?.error);return;}status('DONE: extended melodic starter packs installed');await refresh();};
   $('#im-local').onclick=async()=>{const p=await window.electronAPI?.selectInstrumentPackZip?.();if(!p?.path)return;status('RUNNING: installing local ZIP');const r=await window.electronAPI?.installInstrumentFromZip?.(p.path);if(!r?.success){status('ERROR: '+r?.error);return;}status('DONE: '+(r.pack?.name||'pack')+' installed');await refresh();};
   $('#im-download').onclick=async()=>{const url=$('#im-url').value.trim();if(!url){status('ERROR: paste a direct ZIP URL');return;}status('RUNNING: downloading instrument pack');const r=await window.electronAPI?.installInstrumentFromUrl?.(url);if(!r?.success){status('ERROR: '+r?.error);return;}status('DONE: '+(r.pack?.name||'pack')+' installed');await refresh();};
   async function ensureType(type,keywords=[]){
@@ -140,7 +141,16 @@ export function mountInstrumentManager(){
       return score(b)-score(a);
     });
     const a=choices[0];
-    if(!a)return {success:false,status:'missing',error:'No installable '+type+' pack found in cloud catalog'};
+    if(!a){
+      if(['keys','guitar','synth','pad','strings'].includes(type)){
+        const x=await window.electronAPI?.installExtendedStarterInstruments?.();
+        if(x?.success){
+          await refresh();const p=(packs||[]).find(p=>p.type===type);
+          if(p)return {success:true,status:'starter-fallback',pack:p};
+        }
+      }
+      return {success:false,status:'missing',error:'No installable '+type+' pack found in cloud catalog'};
+    }
     let d=a;
     if(!a.downloaded||!a.valid){
       const x=await window.electronAPI?.instrumentCloudDownload?.(a.id);if(!x?.success)return {success:false,error:x?.error||'Download failed'};d=x.asset||a;

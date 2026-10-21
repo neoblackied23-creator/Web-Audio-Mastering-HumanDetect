@@ -93,12 +93,13 @@ function lyricSystemPrompt(action){
   const common='You are a professional lyric editor. Never claim that a detector can be defeated. Improve naturalness, specificity, narrative coherence, emotional detail, singability, and phrasing while preserving the user intent. Avoid generic AI-like cliches, excessive symmetry, repetitive line openings, and filler. Preserve section labels such as [Verse], [Chorus], [Bridge] when present.';
   if(action==='analyze')return common+' Analyze the lyrics. Identify concrete issues and give concise, practical edits. Do not rewrite the whole lyric unless useful.';
   if(action==='suggest')return common+' Give a prioritized improvement plan, then provide 6-12 replacement line suggestions for the weakest lines.';
+  if(action==='genre_suggest')return common+' Tailor every suggestion to the supplied genre, subgenre, and mood. Improve vocabulary, imagery, cadence, rhyme density, hook strength, and section dynamics so the lyric feels native to that genre rather than generic.';
   return common+' Rewrite the lyrics into a polished, human-sounding version. Preserve meaning, perspective, core hook, rhyme intent, and approximate line lengths. Return only the revised lyrics unless a tiny note is necessary.';
 }
 async function lyricAiRequest(p){
-  const provider=String(p.provider||''),model=String(p.model||''),key=String(p.apiKey||''),url=String(p.url||''),text=String(p.text||''),action=String(p.action||'polish');
+  const provider=String(p.provider||''),model=String(p.model||''),key=String(p.apiKey||''),url=String(p.url||''),text=String(p.text||''),action=String(p.action||'polish'),genre=String(p.genre||''),subgenre=String(p.subgenre||''),mood=String(p.mood||'');
   if(!key)throw new Error('API key is required');if(!text.trim())throw new Error('Lyrics are empty');
-  const system=lyricSystemPrompt(action),user='LYRICS:\n'+text;
+  const system=lyricSystemPrompt(action),user=(action==='genre_suggest'?('TARGET GENRE: '+genre+'\nSUBGENRE: '+subgenre+'\nMOOD: '+mood+'\n\n'):'')+'LYRICS:\n'+text;
   if(provider==='gemini'){
     const m=encodeURIComponent(model||'gemini-2.5-flash');
     const endpoint='https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key);

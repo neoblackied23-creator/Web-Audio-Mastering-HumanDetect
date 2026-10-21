@@ -10,12 +10,12 @@ export function mountInstrumentManager(){
   <div class="im-row"><button class="im-btn main" id="im-starter">Install Starter Packs</button><button class="im-btn" id="im-local">Install Local ZIP</button><button class="im-btn" id="im-build-folder">Pack Builder: Folder</button><button class="im-btn" id="im-build-zip">Pack Builder: ZIP</button></div>
   <div id="im-builder" class="im-item" style="display:none;grid-template-columns:1fr">
     <div><b>Pack Builder v3.2</b><div id="im-builder-info" class="im-meta">Choose a folder or ZIP containing audio samples.</div></div>
-    <div class="im-row"><label>Name <input class="im-url" id="im-builder-name" style="min-width:190px" value="Custom Instrument Pack"></label><label>Type <select id="im-builder-type"><option value="drums">Drums</option><option value="bass">Bass</option></select></label></div>
+    <div class="im-row"><label>Name <input class="im-url" id="im-builder-name" style="min-width:190px" value="Custom Instrument Pack"></label><label>Type <select id="im-builder-type"><option value="drums">Drums</option><option value="bass">Bass</option><option value="keys">Piano / Keys</option><option value="guitar">Guitar</option><option value="synth">Synth Lead</option><option value="pad">Synth Pad</option><option value="strings">Strings</option></select></label></div>
     <div class="im-row"><label style="flex:1">License / rights note <input class="im-url" id="im-builder-license" value="User-provided samples; rights not verified"></label></div>
     <div id="im-builder-drums">
       <div class="im-row"><label>Kick <select id="im-builder-kick"></select></label><label>Snare <select id="im-builder-snare"></select></label><label>Hat <select id="im-builder-hat"></select></label></div>
     </div>
-    <div id="im-builder-bass" style="display:none">
+    <div id="im-builder-bass" style="display:none"><div class="im-meta">Single-note sample packs are used for Bass / Keys / Guitar / Synth / Pad / Strings.</div>
       <div class="im-row"><label>Bass sample <select id="im-builder-bassfile"></select></label><label>Root MIDI <input id="im-builder-root" type="number" min="0" max="127" value="36" style="width:70px"></label></div>
     </div>
     <div class="im-row"><button class="im-btn main" id="im-builder-create">Build + Install</button><button class="im-btn" id="im-builder-cancel">Cancel</button></div>
@@ -51,7 +51,7 @@ export function mountInstrumentManager(){
     $('#im-builder-hat').innerHTML=builderOptions(pick('hat'),a.mapping?.hat);
     $('#im-builder-bassfile').innerHTML=builderOptions(pick('bass'),a.mapping?.bass);
     $('#im-builder-root').value=Number(a.mapping?.rootMidi??36);
-    const syncType=()=>{const bass=$('#im-builder-type').value==='bass';$('#im-builder-drums').style.display=bass?'none':'block';$('#im-builder-bass').style.display=bass?'block':'none';};
+    const syncType=()=>{const melodic=$('#im-builder-type').value!=='drums';$('#im-builder-drums').style.display=melodic?'none':'block';$('#im-builder-bass').style.display=melodic?'block':'none';};
     $('#im-builder-type').onchange=syncType;syncType();builderProgress(45,'ANALYZED');
   }
   async function startBuilder(kind){
@@ -89,11 +89,11 @@ export function mountInstrumentManager(){
   async function refresh(){
     const r=await window.electronAPI?.instrumentManagerList?.();packs=r?.packs||[];
     window.__instrumentPacks=packs;
-    const selBass=localStorage.getItem('hd_instrument_bass')||'',selDrums=localStorage.getItem('hd_instrument_drums')||'';
-    $('#im-list').innerHTML=packs.length?packs.map(p=>`<div class="im-item"><div><b>${esc(p.name||p.id)}</b><div class="im-meta">${esc(p.type)} • v${esc(p.version||'?')} • ${esc(p.license||'license not specified')}</div></div><label><input type="radio" name="im-${esc(p.type)}" data-select="${esc(p.id)}" data-type="${esc(p.type)}" ${(p.type==='bass'?selBass:selDrums)===p.id?'checked':''}> Use</label><button class="im-btn" data-remove="${esc(p.id)}">Remove</button></div>`).join(''):'<div class="im-status">No optional sample packs installed. Re-Performance will use internal synths.</div>';
-    root.querySelectorAll('[data-select]').forEach(x=>x.onchange=()=>{localStorage.setItem('hd_instrument_'+x.dataset.type,x.dataset.select);window.__instrumentSelection={bass:localStorage.getItem('hd_instrument_bass'),drums:localStorage.getItem('hd_instrument_drums')};status('Selected '+x.dataset.select+' for '+x.dataset.type);});
-    root.querySelectorAll('[data-remove]').forEach(x=>x.onclick=async()=>{status('RUNNING: removing '+x.dataset.remove);const r=await window.electronAPI?.removeInstrumentPack?.(x.dataset.remove);if(!r?.success){status('ERROR: '+r?.error);return;}for(const t of ['bass','drums'])if(localStorage.getItem('hd_instrument_'+t)===x.dataset.remove)localStorage.removeItem('hd_instrument_'+t);status('DONE: pack removed');refresh();});
-    window.__instrumentSelection={bass:localStorage.getItem('hd_instrument_bass'),drums:localStorage.getItem('hd_instrument_drums')};
+    const selected={};for(const typ of ['drums','bass','keys','guitar','synth','pad','strings'])selected[typ]=localStorage.getItem('hd_instrument_'+typ)||'';
+    $('#im-list').innerHTML=packs.length?packs.map(p=>`<div class="im-item"><div><b>${esc(p.name||p.id)}</b><div class="im-meta">${esc(p.type)} • v${esc(p.version||'?')} • ${esc(p.license||'license not specified')}</div></div><label><input type="radio" name="im-${esc(p.type)}" data-select="${esc(p.id)}" data-type="${esc(p.type)}" ${selected[p.type]===p.id?'checked':''}> Use</label><button class="im-btn" data-remove="${esc(p.id)}">Remove</button></div>`).join(''):'<div class="im-status">No optional sample packs installed. Re-Performance will use internal synths.</div>';
+    root.querySelectorAll('[data-select]').forEach(x=>x.onchange=()=>{localStorage.setItem('hd_instrument_'+x.dataset.type,x.dataset.select);window.__instrumentSelection={};for(const t of ['drums','bass','keys','guitar','synth','pad','strings'])window.__instrumentSelection[t]=localStorage.getItem('hd_instrument_'+t);status('Selected '+x.dataset.select+' for '+x.dataset.type);});
+    root.querySelectorAll('[data-remove]').forEach(x=>x.onclick=async()=>{status('RUNNING: removing '+x.dataset.remove);const r=await window.electronAPI?.removeInstrumentPack?.(x.dataset.remove);if(!r?.success){status('ERROR: '+r?.error);return;}for(const t of ['drums','bass','keys','guitar','synth','pad','strings'])if(localStorage.getItem('hd_instrument_'+t)===x.dataset.remove)localStorage.removeItem('hd_instrument_'+t);status('DONE: pack removed');refresh();});
+    window.__instrumentSelection={};for(const t of ['drums','bass','keys','guitar','synth','pad','strings'])window.__instrumentSelection[t]=localStorage.getItem('hd_instrument_'+t);
   }
   $('#im-build-folder').onclick=()=>startBuilder('folder');
   $('#im-build-zip').onclick=()=>startBuilder('zip');

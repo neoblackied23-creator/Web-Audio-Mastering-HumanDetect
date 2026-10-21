@@ -127,7 +127,7 @@ export function mountInstrumentManager(){
   async function ensureType(type,keywords=[]){
     await refresh();
     const existing=(packs||[]).find(p=>p.type===type);
-    if(existing)return {success:true,status:'installed',pack:existing};
+    if(existing){if(!localStorage.getItem('hd_instrument_'+type))localStorage.setItem('hd_instrument_'+type,existing.id);return {success:true,status:'installed',pack:existing};}
     const cat=await window.electronAPI?.instrumentCloudCatalog?.(false);
     if(!cat?.success)return {success:false,error:cat?.error||'Cloud catalog unavailable'};
     const kw=(keywords||[]).map(x=>String(x).toLowerCase());
@@ -146,7 +146,7 @@ export function mountInstrumentManager(){
         const x=await window.electronAPI?.installExtendedStarterInstruments?.();
         if(x?.success){
           await refresh();const p=(packs||[]).find(p=>p.type===type);
-          if(p)return {success:true,status:'starter-fallback',pack:p};
+          if(p){localStorage.setItem('hd_instrument_'+type,p.id);return {success:true,status:'starter-fallback',pack:p};}
         }
       }
       return {success:false,status:'missing',error:'No installable '+type+' pack found in cloud catalog'};
@@ -156,7 +156,7 @@ export function mountInstrumentManager(){
       const x=await window.electronAPI?.instrumentCloudDownload?.(a.id);if(!x?.success)return {success:false,error:x?.error||'Download failed'};d=x.asset||a;
     }
     const x=await window.electronAPI?.instrumentCloudInstall?.(a.id);if(!x?.success)return {success:false,error:x?.error||'Install failed'};
-    await refresh();return {success:true,status:'downloaded',pack:x.pack||null,asset:d};
+    await refresh();if(x.pack?.id)localStorage.setItem('hd_instrument_'+type,x.pack.id);return {success:true,status:'downloaded',pack:x.pack||null,asset:d};
   }
   window.__instrumentManagerAPI={
     open:()=>{root.style.display='block';toggle.style.display='none';refresh();refreshCloud(false);},

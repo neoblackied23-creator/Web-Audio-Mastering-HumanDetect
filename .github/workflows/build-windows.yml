@@ -85,6 +85,7 @@ jobs:
           Copy-Item overlay/patch/patch_v330.py app/patch_v330.py
           Copy-Item overlay/patch/patch_v340.py app/patch_v340.py
           Copy-Item overlay/patch/patch_v350.py app/patch_v350.py
+          Copy-Item overlay/patch/patch_v360.py app/patch_v360.py
 
       - name: Apply integration patches
         working-directory: app
@@ -124,6 +125,7 @@ jobs:
           python patch_v330.py
           python patch_v340.py
           python patch_v350.py
+          python patch_v360.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -151,14 +153,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v3.5.0"
+          $tag = "v3.6.0"
           $exe = Get-ChildItem app/release/*.exe | Select-Object -First 1
           if (-not $exe) { throw "Portable EXE not found" }
           gh release view $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect 2>$null
           if ($LASTEXITCODE -ne 0) {
             $created = $false
             for ($i=1; $i -le 5; $i++) {
-              gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.5.0" --notes "Portable Windows build for HumanDetect v3.5.0 Music Source Classifier + Adapt Editor + metadata."
+              gh release create $tag --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --title "HumanDetect v3.6.0" --notes "Portable Windows build for HumanDetect v3.6.0 Source Classifier + Metadata + Fingerprint Inspector."
               if ($LASTEXITCODE -eq 0) { $created = $true; break }
               Start-Sleep -Seconds (10 * $i)
             }
@@ -166,7 +168,7 @@ jobs:
           }
           $uploaded = $false
           for ($i=1; $i -le 5; $i++) {
-            gh release upload $tag "$($exe.FullName)#HumanDetect_3.5.0.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber
+            gh release upload $tag "$($exe.FullName)#HumanDetect_3.6.0.exe" --repo neoblackied23-creator/Web-Audio-Mastering-HumanDetect --clobber
             if ($LASTEXITCODE -eq 0) { $uploaded = $true; break }
             Start-Sleep -Seconds (10 * $i)
           }

@@ -28,6 +28,21 @@ function heuristicGenre(text){
   return {genre,subgenre,mood,scores};
 }
 
+function genreInstrumentPlan(g){
+  const genre=String(g?.genre||'Pop');
+  const map={
+    'Pop':{core:['Drums','Bass','Piano/Keys','Synth Pad','Electric Guitar'],supported:[{type:'drums',keywords:['pop','acoustic','live']},{type:'bass',keywords:['pop','electric','finger']}],notes:['Piano/Keys','Synth Pad','Electric Guitar']},
+    'Rock':{core:['Live Drums','Electric Bass','Electric Guitar','Acoustic Guitar'],supported:[{type:'drums',keywords:['rock','live','acoustic']},{type:'bass',keywords:['rock','electric','bass guitar']}],notes:['Electric Guitar','Acoustic Guitar']},
+    'EDM / Dance':{core:['Electronic Drums','Sub Bass','Synth Lead','Synth Pad','FX/Risers'],supported:[{type:'drums',keywords:['edm','electronic','dance']},{type:'bass',keywords:['sub','edm','synth']}],notes:['Synth Lead','Synth Pad','FX/Risers']},
+    'R&B / Soul':{core:['Groove Drums','Electric Bass','Rhodes/Keys','Clean Guitar','Pad'],supported:[{type:'drums',keywords:['r&b','soul','groove']},{type:'bass',keywords:['r&b','soul','electric']}],notes:['Rhodes/Keys','Clean Guitar','Pad']},
+    'Hip-Hop / Rap':{core:['Hip-Hop Drums','808/Sub Bass','Keys','Texture/Pad'],supported:[{type:'drums',keywords:['hiphop','hip-hop','trap']},{type:'bass',keywords:['808','sub','trap']}],notes:['Keys','Texture/Pad']},
+    'Country / Folk':{core:['Acoustic Drums','Electric/Acoustic Bass','Acoustic Guitar','Mandolin/Fiddle'],supported:[{type:'drums',keywords:['country','acoustic','live']},{type:'bass',keywords:['country','acoustic','upright']}],notes:['Acoustic Guitar','Mandolin/Fiddle']},
+    'Indie / Alternative':{core:['Indie Drums','Electric Bass','Electric Guitar','Lo-fi Keys/Pad'],supported:[{type:'drums',keywords:['indie','alternative','live']},{type:'bass',keywords:['indie','electric']}],notes:['Electric Guitar','Lo-fi Keys/Pad']},
+    'Ballad':{core:['Soft Drums/Percussion','Warm Bass','Piano','Strings/Pad'],supported:[{type:'drums',keywords:['soft','brush','ballad']},{type:'bass',keywords:['warm','upright','soft']}],notes:['Piano','Strings/Pad']}
+  };
+  return map[genre]||map.Pop;
+}
+
 function heuristicLyricAnalysis(text){
   const t=String(text||'').trim(),lines=t.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
   if(!t)return {score:0,flags:[]};
@@ -59,7 +74,7 @@ export function mountLyricLabPanel(opts={}){
   </div>
   <div class="ll-grid">
     <div class="ll-card"><b>Original / Pasted Lyrics</b><textarea id="ll-original" placeholder="Extract from audio, paste lyrics from Mureka/Treblo/Suno/etc., or type manually..."></textarea><div class="ll-row"><button class="ll-btn" id="ll-local-analyze">Analyze Style</button><button class="ll-btn" id="ll-ai-analyze">AI Review</button><span id="ll-source-mode" class="ll-status">Source: manual / none</span></div><div class="ll-score" id="ll-score">AI-style indicators: —</div><div class="ll-row"><b>Detected Genre:</b><span id="ll-genre">—</span><b>Subgenre:</b><span id="ll-subgenre">—</span><b>Mood:</b><span id="ll-mood">—</span></div><div class="ll-flags" id="ll-flags"></div></div>
-    <div class="ll-card"><b>Polished / Natural Version</b><textarea id="ll-output" placeholder="Suggested rewrite appears here..."></textarea><div class="ll-row"><button class="ll-btn main" id="ll-polish">Polish / Humanize</button><button class="ll-btn" id="ll-suggest">Suggest Improvements</button><button class="ll-btn" id="ll-suggest-genre">Suggest by Genre</button><button class="ll-btn" id="ll-copy">Copy Result</button></div><div class="ll-status" id="ll-ai-note">Preserves meaning, section structure, rhyme intent, and singability unless you request larger changes.</div></div>
+    <div class="ll-card"><b>Polished / Natural Version</b><textarea id="ll-output" placeholder="Suggested rewrite appears here..."></textarea><div class="ll-row"><button class="ll-btn main" id="ll-polish">Polish / Humanize</button><button class="ll-btn" id="ll-suggest">Suggest Improvements</button><button class="ll-btn" id="ll-suggest-genre">Suggest by Genre</button><button class="ll-btn" id="ll-copy">Copy Result</button></div><div class="ll-status" id="ll-ai-note">Preserves meaning, section structure, rhyme intent, and singability unless you request larger changes.</div><div class="ll-row"><button class="ll-btn" id="ll-inst">Suggest Instruments</button><button class="ll-btn" id="ll-inst-manager">Open Instrument Manager</button><button class="ll-btn main" id="ll-auto-inst">Download Missing Bass/Drums</button></div><div class="ll-flags" id="ll-inst-list">Instrument suggestions will appear here.</div></div>
   </div>
   <div class="ll-status" id="ll-status">Ready. AI-style score is a writing-style heuristic, not proof of authorship.</div>`;
   document.body.appendChild(root);
@@ -106,6 +121,41 @@ export function mountLyricLabPanel(opts={}){
     const r=await window.electronAPI?.lyricAi?.(p);if(!r?.success)throw new Error(r?.error||'AI request failed');
     $('#ll-output').value=r.text||'';status('Genre-aware suggestions ready for '+g.genre+' / '+g.subgenre+'.');
   }catch(e){status('Genre suggestion failed: '+e.message);}};
+  $('#ll-inst').onclick=async()=>{try{
+    const txt=$('#ll-original').value;if(!txt.trim())throw new Error('Lyrics are empty');
+    const g=window.__lyricGenre||heuristicGenre(txt);window.__lyricGenre=g;
+    const plan=genreInstrumentPlan(g),api=window.__instrumentManagerAPI;
+    const packs=api?await api.refresh():(window.__instrumentPacks||[]);
+    const installed={drums:packs.find(p=>p.type==='drums'),bass:packs.find(p=>p.type==='bass')};
+    const lines=['Genre: '+g.genre+' / '+g.subgenre+' • '+g.mood,'Recommended arrangement: '+plan.core.join(', ')];
+    for(const s of plan.supported){
+      const p=installed[s.type];
+      lines.push((p?'✓ ':'✗ ')+s.type.toUpperCase()+': '+(p?(p.name||p.id):'not installed'));
+    }
+    if(plan.notes.length)lines.push('Not yet supported by current Instrument Manager: '+plan.notes.join(', '));
+    $('#ll-inst-list').innerHTML=lines.map(x=>esc(x)).join('<br>');
+    status('Instrument plan ready. Missing supported packs can be downloaded with Instrument Manager.');
+  }catch(e){status('Instrument suggestion failed: '+e.message);}};
+  $('#ll-inst-manager').onclick=()=>{const api=window.__instrumentManagerAPI;if(api)api.open();else status('Instrument Manager is not ready.');};
+  $('#ll-auto-inst').onclick=async()=>{const b=$('#ll-auto-inst');b.disabled=true;try{
+    const txt=$('#ll-original').value;if(!txt.trim())throw new Error('Lyrics are empty');
+    const g=window.__lyricGenre||heuristicGenre(txt),plan=genreInstrumentPlan(g),api=window.__instrumentManagerAPI;
+    if(!api)throw new Error('Instrument Manager is not ready');
+    status('Checking installed instrument packs for '+g.genre+'…');
+    const results=[];
+    for(const s of plan.supported){
+      const r=await api.ensureType(s.type,s.keywords);results.push({type:s.type,...r});
+      if(!r.success)results[results.length-1].error=r.error||'not available';
+    }
+    const packs=await api.refresh();
+    const lines=['Genre: '+g.genre+' / '+g.subgenre];
+    for(const x of results){
+      lines.push((x.success?'✓ ':'✗ ')+x.type.toUpperCase()+': '+(x.success?(x.pack?.name||x.status):x.error));
+    }
+    if(plan.notes.length)lines.push('Manual/future instrument support needed: '+plan.notes.join(', '));
+    $('#ll-inst-list').innerHTML=lines.map(x=>esc(x)).join('<br>');
+    status('Instrument check/download finished. Newly installed bass/drums are ready for Re-Performance humanization.');
+  }catch(e){status('Instrument download failed: '+e.message);}finally{b.disabled=false;}};
   $('#ll-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#ll-output').value);status('Result copied.');}catch(e){status('Copy failed: '+e.message);}};
   toggle.onclick=()=>{root.style.display='block';toggle.style.display='none';check();};$('.ll-close').onclick=()=>{root.style.display='none';toggle.style.display='block';};
 }

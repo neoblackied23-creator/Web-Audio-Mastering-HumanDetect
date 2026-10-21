@@ -89,7 +89,7 @@ export function mountAdaptEditor(opts={}){
   if(window.__adaptEditorMounted)return;window.__adaptEditorMounted=true;
   const player=document.querySelector('.audio-player');if(!player)return;
   const style=document.createElement('style');
-  style.textContent=`.adapt-editor{margin-top:12px;border:1px solid #3a3a44;background:#111116;border-radius:10px;overflow:hidden;color:#eee;font-family:system-ui}.ae-head,.ae-toolbar,.ae-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ae-head{padding:10px 12px;border-bottom:1px solid #30303a}.ae-head b{font-size:13px}.ae-sub{font-size:11px;opacity:.6}.ae-toolbar{padding:9px 12px;border-bottom:1px solid #25252d}.ae-toolbar select,.ae-toolbar input[type=number]{background:#202027;color:#eee;border:1px solid #3d3d49;border-radius:6px;padding:5px 7px}.ae-timeline{position:relative;padding:8px 12px 10px}.ae-scale{display:flex;justify-content:space-between;font-size:10px;opacity:.55;margin-left:122px}.ae-row{display:grid;grid-template-columns:116px 1fr;align-items:center;gap:6px;margin-top:5px}.ae-label{display:flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap}.ae-label input{margin:0}.ae-canvas-wrap{position:relative;height:42px;border:1px solid #30303a;border-radius:5px;background:#0b0b0e;overflow:hidden}.ae-canvas{width:100%;height:100%;display:block}.ae-select{position:absolute;top:0;bottom:0;background:#9d6cff2b;border-left:1px solid #aa93ff;border-right:1px solid #aa93ff;pointer-events:none}.ae-playhead{position:absolute;top:0;bottom:0;width:1px;background:#f0eaff;opacity:.7;pointer-events:none}.ae-actions{padding:10px 12px;border-top:1px solid #25252d}.ae-btn{background:#24242c;color:#eee;border:1px solid #444451;border-radius:7px;padding:7px 10px}.ae-btn.main{background:#9d6cff;color:#fff;border-color:#9d6cff}.ae-btn:disabled{opacity:.4}.ae-range{font-size:11px;opacity:.72;margin-left:auto}.ae-status{font-size:11px;padding:0 12px 10px;opacity:.75}.ae-score{font-weight:700;color:#cabdff}@media(max-width:800px){.ae-row{grid-template-columns:92px 1fr}.ae-scale{margin-left:98px}.ae-range{width:100%;margin-left:0}}`;
+  style.textContent=`.adapt-editor{margin-top:12px;border:1px solid #3a3a44;background:#111116;border-radius:10px;overflow:hidden;color:#eee;font-family:system-ui}.ae-head,.ae-toolbar,.ae-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ae-head{padding:10px 12px;border-bottom:1px solid #30303a}.ae-head b{font-size:13px}.ae-sub{font-size:11px;opacity:.6}.ae-toolbar{padding:9px 12px;border-bottom:1px solid #25252d}.ae-toolbar select,.ae-toolbar input[type=number]{background:#202027;color:#eee;border:1px solid #3d3d49;border-radius:6px;padding:5px 7px}.ae-timeline{position:relative;padding:8px 12px 10px}.ae-scale{display:flex;justify-content:space-between;font-size:10px;opacity:.55;margin-left:122px}.ae-row{display:grid;grid-template-columns:116px 1fr;align-items:center;gap:6px;margin-top:5px}.ae-label{display:flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap}.ae-label input{margin:0}.ae-canvas-wrap{position:relative;height:42px;border:1px solid #30303a;border-radius:5px;background:#0b0b0e;overflow:hidden}.ae-canvas{width:100%;height:100%;display:block}.ae-select{position:absolute;top:0;bottom:0;background:#9d6cff2b;border-left:1px solid #aa93ff;border-right:1px solid #aa93ff;pointer-events:none}.ae-playhead{position:absolute;top:0;bottom:0;width:1px;background:#f0eaff;opacity:.7;pointer-events:none}.ae-actions{padding:10px 12px;border-top:1px solid #25252d}.ae-btn{background:#24242c;color:#eee;border:1px solid #444451;border-radius:7px;padding:7px 10px}.ae-btn.main{background:#9d6cff;color:#fff;border-color:#9d6cff}.ae-btn:disabled{opacity:.4}.ae-range{font-size:11px;opacity:.72;margin-left:auto}.ae-status{font-size:11px;padding:0 12px 10px;opacity:.75}.ae-score{font-weight:700;color:#cabdff}.ae-meta-panel{display:none;padding:10px 12px;border-top:1px solid #25252d;background:#0d0d12}.ae-meta-panel.open{display:block}.ae-meta-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.ae-meta-grid label{font-size:10px;opacity:.8}.ae-meta-grid input,.ae-meta-grid textarea{width:100%;box-sizing:border-box;margin-top:3px;background:#1c1c23;color:#eee;border:1px solid #3a3a46;border-radius:6px;padding:6px}.ae-meta-grid textarea{min-height:58px;resize:vertical}.ae-meta-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}.ae-meta-note{font-size:10px;opacity:.6;margin-top:7px}@media(max-width:800px){.ae-row{grid-template-columns:92px 1fr}.ae-scale{margin-left:98px}.ae-range{width:100%;margin-left:0}}`;
   document.head.appendChild(style);
 
   const root=document.createElement('section');root.className='adapt-editor';
@@ -109,8 +109,28 @@ export function mountAdaptEditor(opts={}){
     <button class="ae-btn" id="ae-preview-b">Preview Adapted</button>
     <button class="ae-btn" id="ae-stop">Stop Preview</button>
     <button class="ae-btn main" id="ae-apply">Apply Selected Range</button>
-    <button class="ae-btn" id="ae-reset">Reset Range</button>
+    <button class="ae-btn" id="ae-reset">Reset Range</button><button class="ae-btn" id="ae-meta-toggle">Edit Metadata</button>
     <span class="ae-range" id="ae-range">Select a region on the timeline</span>
+  </div>
+  <div class="ae-meta-panel" id="ae-meta-panel">
+    <div class="ae-meta-grid">
+      <label>Title<input id="ae-meta-title" type="text"></label>
+      <label>Artist<input id="ae-meta-artist" type="text"></label>
+      <label>Album<input id="ae-meta-album" type="text"></label>
+      <label>Year<input id="ae-meta-year" type="text"></label>
+      <label>Genre<input id="ae-meta-genre" type="text"></label>
+      <label>Track<input id="ae-meta-track" type="text"></label>
+      <label>Composer<input id="ae-meta-composer" type="text"></label>
+      <label>Copyright<input id="ae-meta-copyright" type="text"></label>
+      <label style="grid-column:span 3">Comment<textarea id="ae-meta-comment"></textarea></label>
+    </div>
+    <div class="ae-meta-actions">
+      <button class="ae-btn" id="ae-meta-read">Read Source Metadata</button>
+      <button class="ae-btn main" id="ae-meta-save-copy">Save Metadata Copy</button>
+      <label style="font-size:11px"><input id="ae-meta-overwrite-ok" type="checkbox"> Allow overwrite source</label>
+      <button class="ae-btn" id="ae-meta-save-source">Write to Source</button>
+    </div>
+    <div class="ae-meta-note" id="ae-meta-note">MP3/WAV supported in v3.4. Save as Copy is recommended.</div>
   </div>
   <div class="ae-status" id="ae-status">Load a track, prepare stems, then drag on any lane to select the section to adapt.</div>`;
   player.appendChild(root);
@@ -159,6 +179,37 @@ export function mountAdaptEditor(opts={}){
     wrap.addEventListener('mousemove',e=>{if(!dragging)return;const p=posFromEvent(e,wrap);selEnd=Math.max(selStart,p);if(p<selStart){selEnd=selStart;selStart=p;}updateRange();});
   }
   window.addEventListener('mouseup',()=>{dragging=false;});
+  function metadataForm(){
+    return {
+      title:$('#ae-meta-title').value.trim(),artist:$('#ae-meta-artist').value.trim(),album:$('#ae-meta-album').value.trim(),
+      year:$('#ae-meta-year').value.trim(),genre:$('#ae-meta-genre').value.trim(),track:$('#ae-meta-track').value.trim(),
+      composer:$('#ae-meta-composer').value.trim(),copyright:$('#ae-meta-copyright').value.trim(),comment:$('#ae-meta-comment').value.trim()
+    };
+  }
+  function fillMetadata(m={}){
+    $('#ae-meta-title').value=m.title||'';$('#ae-meta-artist').value=m.artist||'';$('#ae-meta-album').value=m.album||'';
+    $('#ae-meta-year').value=m.year||'';$('#ae-meta-genre').value=m.genre||'';$('#ae-meta-track').value=m.track||'';
+    $('#ae-meta-composer').value=m.composer||'';$('#ae-meta-copyright').value=m.copyright||'';$('#ae-meta-comment').value=m.comment||'';
+  }
+  async function sourcePath(){return await opts.getOriginalPath?.()||null;}
+  $('#ae-meta-toggle').onclick=()=>{$('#ae-meta-panel').classList.toggle('open');};
+  $('#ae-meta-read').onclick=async()=>{try{
+    const p=await sourcePath();if(!p)throw new Error('Load a source file first');
+    const r=await window.electronAPI?.audioMetadataRead?.(p);if(!r?.success)throw new Error(r?.error||'Could not read metadata');
+    fillMetadata(r.metadata||{});$('#ae-meta-note').textContent='Loaded metadata from '+(r.path||p);
+  }catch(e){$('#ae-meta-note').textContent='ERROR: '+e.message;}};
+  $('#ae-meta-save-copy').onclick=async()=>{try{
+    const p=await sourcePath();if(!p)throw new Error('Load a source file first');
+    const r=await window.electronAPI?.audioMetadataWrite?.(p,metadataForm(),false);if(!r?.success)throw new Error(r?.error||'Could not write metadata');
+    $('#ae-meta-note').textContent='Saved metadata copy: '+r.path;
+  }catch(e){$('#ae-meta-note').textContent='ERROR: '+e.message;}};
+  $('#ae-meta-save-source').onclick=async()=>{try{
+    if(!$('#ae-meta-overwrite-ok').checked)throw new Error('Enable Allow overwrite source first');
+    const p=await sourcePath();if(!p)throw new Error('Load a source file first');
+    const r=await window.electronAPI?.audioMetadataWrite?.(p,metadataForm(),true);if(!r?.success)throw new Error(r?.error||'Could not write metadata');
+    $('#ae-meta-note').textContent='Source metadata updated: '+r.path;
+  }catch(e){$('#ae-meta-note').textContent='ERROR: '+e.message;}};
+
   $('#ae-strength').oninput=()=>{$('#ae-strength-v').textContent=$('#ae-strength').value+'%';};
   $('#ae-reset').onclick=()=>{selStart=0;selEnd=duration;updateRange();};
   $('#ae-stems').onclick=async()=>{try{$('#ae-status').textContent='Preparing stems…';let api=window.__stemLabAPI;if(!api)throw new Error('Stem Lab is not ready');const s=getStems();if(!s.vocals||!s.other||!s.bass||!s.drums)await api.separate();await refreshSource();selStart=0;selEnd=duration;updateRange();$('#ae-status').textContent='4 stems ready • drag timeline to choose a section.';}catch(e){$('#ae-status').textContent='ERROR: '+e.message;}};
